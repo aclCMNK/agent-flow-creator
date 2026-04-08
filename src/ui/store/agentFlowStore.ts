@@ -22,6 +22,7 @@
  */
 
 import { create } from "zustand";
+import type { SerializableProjectModel } from "../../electron/bridge.types.ts";
 
 /** Simple UUID-v4 generator (no external deps) */
 function uuid(): string {
@@ -228,6 +229,18 @@ export interface AgentFlowActions {
    * Set the isSavingGraph flag. Used by the save button during async save.
    */
   setSavingGraph(saving: boolean): void;
+  /**
+   * Reset the flow store to its initial empty state.
+   * Called when closing a project or before loading a new one.
+   */
+  resetFlow(): void;
+  /**
+   * Reconstruct agents and links from a loaded project.
+   * Called after `openProject` succeeds to hydrate the canvas.
+   * Also restores panelOpen from project.properties.ui.panelOpen.
+   * Marks the store as clean (isDirty = false).
+   */
+  loadFromProject(project: SerializableProjectModel): void;
 }
 
 export type AgentFlowStore = AgentFlowState & AgentFlowActions;
@@ -416,5 +429,71 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
 
   setSavingGraph(saving) {
     set({ isSavingGraph: saving });
+  },
+
+  resetFlow() {
+    set({
+      agents: [],
+      links: [],
+      isPlacing: false,
+      editingAgentId: null,
+      selectedLinkId: null,
+      selectionContext: "none",
+      isDirty: false,
+      isSavingGraph: false,
+    });
+  },
+
+  loadFromProject(project) {
+    // ── Reconstruct agents from the project's serializable agent models ──────
+    const agents: CanvasAgent[] = project.agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      description: a.description,
+      type: a.agentType ?? "Agent",
+      isOrchestrator: a.isOrchestrator ?? false,
+      x: a.position?.x ?? 0,
+      y: a.position?.y ?? 0,
+    }));
+
+    // ── Reconstruct links from connections[] + their metadata ────────────────
+    const links: AgentLink[] = project.connections.map((c) => {
+      const meta = c.metadata ?? {};
+      const ruleType: LinkRuleType =
+        meta.relationType === "Response" ? "Response" : "Delegation";
+      const rawDT = meta.delegationType;
+      const delegationType: DelegationType =
+        rawDT === "Mandatory"
+          ? "Mandatory"
+          : rawDT === "Conditional"
+          ? "Conditional"
+          : "Optional";
+      return {
+        id: c.id,
+        fromAgentId: c.fromAgentId,
+        toAgentId: c.toAgentId,
+        ruleType,
+        delegationType,
+        ruleDetails: meta.ruleDetails ?? "",
+      };
+    });
+
+    // ── Restore panelOpen from project.properties.ui.panelOpen ──────────────
+    const ui = (project.properties as Record<string, unknown>)?.ui as
+      | Record<string, unknown>
+      | undefined;
+    const panelOpen = typeof ui?.panelOpen === "boolean" ? ui.panelOpen : true;
+
+    set({
+      agents,
+      links,
+      panelOpen,
+      isPlacing: false,
+      editingAgentId: null,
+      selectedLinkId: null,
+      selectionContext: "none",
+      isDirty: false,
+      isSavingGraph: false,
+    });
   },
 }));

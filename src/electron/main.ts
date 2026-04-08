@@ -19,7 +19,7 @@
  * path between main and renderer. All IPC flows through window.agentsFlow.
  */
 
-import { app, BrowserWindow, session } from "electron";
+import { app, BrowserWindow, Menu, session } from "electron";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -61,6 +61,7 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     title: "AgentsFlow",
     show: false, // Show after ready-to-show to avoid flash of unstyled content
+    autoHideMenuBar: true,  // Hide the native menu bar (no standard Electron menu)
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,      // Security: renderer cannot touch Node APIs
@@ -84,7 +85,8 @@ function createWindow(): BrowserWindow {
   // ── Window lifecycle ───────────────────────────────────────────────────────
 
   win.once("ready-to-show", () => {
-    console.log("[main] window ready-to-show → showing");
+    console.log("[main] window ready-to-show → maximizing and showing");
+    win.maximize(); // Always open maximized (fills the full desktop/screen area)
     win.show();
   });
 
@@ -99,6 +101,9 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   console.log("[main] app ready. isDev =", isDev, "| renderer URL =", isDev ? RENDERER_DEV_URL : "dist/ui/index.html");
+
+  // Remove the default application menu entirely (all platforms)
+  Menu.setApplicationMenu(null);
 
   // Register a strict Content Security Policy for the renderer
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

@@ -26,6 +26,17 @@ export interface SerializableAgentModel {
   isEntrypoint: boolean;
   position?: { x: number; y: number };
   description: string;
+  /**
+   * Agent role as stored in .adata.metadata.agentType.
+   * "Agent" or "Sub-Agent". Defaults to "Agent" if missing.
+   */
+  agentType: "Agent" | "Sub-Agent";
+  /**
+   * Whether this agent is an orchestrator, from .adata.metadata.isOrchestrator.
+   * Stored as a string "true"/"false" in the file but exposed as boolean here.
+   * Defaults to false if missing.
+   */
+  isOrchestrator: boolean;
   aspects: SerializableAspectRef[];
   skills: SerializableSkillRef[];
   subagents: SerializableSubagentModel[];
@@ -62,6 +73,13 @@ export interface SerializableConnection {
   toAgentId: string;
   label?: string;
   type: "default" | "conditional" | "fallback";
+  /**
+   * Free-form edge metadata. Used to persist flow-editor properties:
+   *   relationType:    "Delegation" | "Response"
+   *   delegationType:  "Optional" | "Mandatory" | "Conditional"
+   *   ruleDetails:     free-form string
+   */
+  metadata?: Record<string, string>;
 }
 
 export interface SerializableProjectModel {

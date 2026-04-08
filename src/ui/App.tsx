@@ -8,17 +8,35 @@
  *   - "browser"    → ProjectBrowser (open/create project)
  *   - "validation" → ValidationPanel (errors/warnings from loader)
  *   - "editor"     → EditorView (agent list + canvas placeholder)
+ *   - "assets"     → AssetPanel (markdown file manager)
  *
- * The App is intentionally thin — it only routes between views.
- * All state logic lives in projectStore.ts.
+ * Project Loader Integration:
+ *   - While `isLoading` is true (any view), a full-screen spinner overlay is shown.
+ *   - When a project successfully loads for the first time (project id changes),
+ *     the agentFlowStore is hydrated via `loadFromProject`:
+ *       · Agents → CanvasAgent[] (from serialized agents, with agentType/isOrchestrator)
+ *       · Links  → AgentLink[]   (from connections[], restoring relationType/delegationType/ruleDetails)
+ *       · panelOpen restored from project.properties.ui.panelOpen
+ *   - Canvas viewport (zoom/pan) is restored by remounting FlowCanvas via key={project.id}
+ *     since FlowCanvas reads project.properties.canvasView on mount.
+ *   - On success: a green "Project loaded!" toast is shown for 2.5 s.
+ *   - On any load error: a red animated toast is shown for 5 s.
+ *
+ * Sidebar:
+ *   - A single unified "Agents" section lists all canvas/flow agents (AgentTreeItem).
+ *   - Clicking an agent opens its rich detail panel on the right (pulled from project.agents).
+ *   - Double-clicking (or the ✏️ button) opens the AgentEditModal to rename/retype.
+ *   - The old "Project Agents" section (AgentCard list) was removed; flow agents
+ *     serve the same purpose after loadFromProject hydration.
+ *
+ * All text and notifications are in English.
  */
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useProjectStore } from "./store/projectStore.ts";
 import { useAgentFlowStore } from "./store/agentFlowStore.ts";
 import { ProjectBrowser } from "./components/ProjectBrowser.tsx";
 import { ValidationPanel } from "./components/ValidationPanel.tsx";
-import { AgentCard } from "./components/AgentCard.tsx";
 import { ProjectSaveBar } from "./components/ProjectSaveBar.tsx";
 import { AgentGraphSaveButton } from "./components/AgentGraphSaveButton.tsx";
 import { FlowCanvas } from "./components/FlowCanvas.tsx";
@@ -27,9 +45,60 @@ import { AgentEditModal } from "./components/AgentEditModal.tsx";
 import { AssetPanel } from "./components/AssetPanel/index.ts";
 import { PropertiesPanel } from "./components/PropertiesPanel.tsx";
 
+// ── Load Toast ─────────────────────────────────────────────────────────────
+// Shown after a project load operation completes (success or error).
+
+type LoadToastKind = "success" | "error";
+
+interface LoadToast {
+  kind: LoadToastKind;
+  message: string;
+}
+
+interface LoadToastProps {
+  toast: LoadToast;
+  onDismiss: () => void;
+}
+
+function LoadToast({ toast, onDismiss }: LoadToastProps) {
+  return (
+    <div
+      className={`project-load-toast project-load-toast--${toast.kind}`}
+      role="status"
+      aria-live="assertive"
+      aria-atomic="true"
+    >
+      <span aria-hidden="true">
+        {toast.kind === "success" ? "✅" : "⚠️"}
+      </span>
+      <span className="project-load-toast__msg">{toast.message}</span>
+      <button
+        className="project-load-toast__close"
+        onClick={onDismiss}
+        aria-label="Dismiss notification"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// ── Loading Overlay ────────────────────────────────────────────────────────
+// Full-screen semi-transparent overlay shown while a project is being loaded.
+
+function LoadingOverlay() {
+  return (
+    <div className="project-load-overlay" role="status" aria-label="Loading project…">
+      <div className="project-load-overlay__card">
+        <span className="project-load-overlay__spinner" aria-hidden="true" />
+        <span className="project-load-overlay__text">Loading project…</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Editor View ────────────────────────────────────────────────────────────
-// Shows the loaded project with an agent list panel + canvas placeholder.
-// The actual flow canvas editor will replace the placeholder in a future phase.
+// Shows the loaded project with an agent list panel + canvas.
 
 function EditorView() {
   const { project, navigate, lastLoadResult, lastError, clearError } =
@@ -127,59 +196,39 @@ function EditorView() {
       <div className="editor-view__main">
         {/* ── Agent sidebar ──────────────────────────────────────── */}
         <aside className="editor-view__sidebar" aria-label="Agents">
-          {/* ── Loaded agents from project ──────────────────────── */}
-          {project && project.agents.length > 0 && (
-            <>
-              <div className="editor-view__sidebar-header">
-                <h2 className="editor-view__sidebar-title">Project Agents</h2>
-                <span className="editor-view__sidebar-count">
-                  {project.agents.length}
-                </span>
-              </div>
-              <ul className="editor-view__agent-list" role="list">
-                {project.agents.map((agent) => (
-                  <li key={agent.id}>
-                    <AgentCard
-                      agent={agent}
-                      selected={selectedAgentId === agent.id}
-                      onSelect={setSelectedAgentId}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-
-          {/* ── Flow agents (canvas nodes) ──────────────────────── */}
-          <div className="editor-view__sidebar-header editor-view__sidebar-header--flow">
-            <h2 className="editor-view__sidebar-title">Flow Agents</h2>
+          {/* ── Agents header + "New agent" button ──────────────── */}
+          <div className="editor-view__sidebar-header">
+            <h2 className="editor-view__sidebar-title">Agents</h2>
             <span className="editor-view__sidebar-count">{flowAgents.length}</span>
             <button
               className={`editor-view__new-agent-btn${isPlacing ? " editor-view__new-agent-btn--active" : ""}`}
               onClick={startPlacement}
               disabled={isPlacing}
               title="Add a new agent to the canvas"
-              aria-label="Nuevo agente"
+              aria-label="New agent"
             >
-              + Nuevo agente
+              + New agent
             </button>
           </div>
 
+          {/* ── Flow agents list (canvas nodes, editable, selectable) ── */}
           {flowAgents.length > 0 ? (
             <ul className="editor-view__flow-agent-list" role="list">
               {flowAgents.map((agent) => (
                 <li key={agent.id}>
-                  <AgentTreeItem agent={agent} />
+                  <AgentTreeItem
+                    agent={agent}
+                    selected={selectedAgentId === agent.id}
+                    onSelect={setSelectedAgentId}
+                  />
                 </li>
               ))}
             </ul>
           ) : (
-            !project?.agents.length && (
-              <div className="editor-view__sidebar-empty">
-                <span aria-hidden="true">🤖</span>
-                <p>No agents yet.<br />Click <strong>+ Nuevo agente</strong> to start.</p>
-              </div>
-            )
+            <div className="editor-view__sidebar-empty">
+              <span aria-hidden="true">🤖</span>
+              <p>No agents yet.<br />Click <strong>+ New agent</strong> to start.</p>
+            </div>
           )}
         </aside>
 
@@ -281,8 +330,11 @@ function EditorView() {
                 )}
               </div>
             ) : (
-              // ── Flow Canvas ────────────────────────────────────────────
-              <FlowCanvas />
+              // ── Flow Canvas ─────────────────────────────────────────────
+              // key={project?.id} ensures FlowCanvas remounts on project change,
+              // which causes getInitialViewport() to re-read project.properties.canvasView
+              // and restore the persisted zoom / pan state.
+              <FlowCanvas key={project?.id} />
             )}
           </section>
         </div>
@@ -300,14 +352,94 @@ function EditorView() {
 // ── App ────────────────────────────────────────────────────────────────────
 
 export function App() {
-  const currentView = useProjectStore((s) => s.currentView);
+  const currentView   = useProjectStore((s) => s.currentView);
+  const isLoading     = useProjectStore((s) => s.isLoading);
+  const isRepairing   = useProjectStore((s) => s.isRepairing);
+  const project       = useProjectStore((s) => s.project);
+  const lastLoadResult = useProjectStore((s) => s.lastLoadResult);
+
+  const loadFromProject = useAgentFlowStore((s) => s.loadFromProject);
+  const resetFlow       = useAgentFlowStore((s) => s.resetFlow);
+
+  // ── Toast state (project load success / error) ───────────────────────────
+  const [loadToast, setLoadToast] = useState<LoadToast | null>(null);
+
+  // Track the last project id we hydrated so we only call loadFromProject once per load.
+  const hydratedProjectId = useRef<string | null>(null);
+
+  // Auto-dismiss toast after a delay
+  useEffect(() => {
+    if (!loadToast) return;
+    const delay = loadToast.kind === "success" ? 2500 : 5000;
+    const t = setTimeout(() => setLoadToast(null), delay);
+    return () => clearTimeout(t);
+  }, [loadToast]);
+
+  // ── Hydrate agentFlowStore when a new project is loaded ─────────────────
+  //
+  // Fires when:
+  //   - project becomes non-null for the first time (initial load)
+  //   - project.id changes (different project opened)
+  //
+  // Does NOT fire on every render — only when project identity changes.
+  useEffect(() => {
+    if (!project) {
+      // Project was closed or not yet loaded — reset the flow store
+      if (hydratedProjectId.current !== null) {
+        resetFlow();
+        hydratedProjectId.current = null;
+      }
+      return;
+    }
+
+    // Already hydrated for this project — skip
+    if (hydratedProjectId.current === project.id) return;
+
+    try {
+      loadFromProject(project);
+      hydratedProjectId.current = project.id;
+      setLoadToast({ kind: "success", message: "Project loaded!" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setLoadToast({ kind: "error", message: `Failed to reconstruct canvas: ${message}` });
+    }
+  }, [project, loadFromProject, resetFlow]);
+
+  // ── Show error toast when load fails with no project (hard error) ────────
+  // lastLoadResult is set even on failure — if it has errors and no project,
+  // show a toast so the user gets feedback even from the browser view.
+  const lastFailedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!lastLoadResult) return;
+    if (lastLoadResult.success) return;
+    if (lastLoadResult.summary.errors === 0) return;
+
+    // Use timestamp as a unique key so we don't repeat the same toast
+    const key = lastLoadResult.timestamp;
+    if (lastFailedRef.current === key) return;
+    lastFailedRef.current = key;
+
+    const errMsg = `Project failed to load — ${lastLoadResult.summary.errors} error(s). See Validation panel.`;
+    setLoadToast({ kind: "error", message: errMsg });
+  }, [lastLoadResult]);
+
+  // Whether to show the overlay — covers both load and repair operations
+  const showOverlay = isLoading || isRepairing;
 
   return (
     <div className="app" data-view={currentView}>
-      {currentView === "browser" && <ProjectBrowser />}
+      {currentView === "browser"    && <ProjectBrowser />}
       {currentView === "validation" && <ValidationPanel />}
-      {currentView === "editor" && <EditorView />}
-      {currentView === "assets" && <AssetPanel />}
+      {currentView === "editor"     && <EditorView />}
+      {currentView === "assets"     && <AssetPanel />}
+
+      {/* ── Full-screen loading overlay (shown during any project load) ── */}
+      {showOverlay && <LoadingOverlay />}
+
+      {/* ── Project load toast (success / error) ─────────────────────── */}
+      {loadToast && (
+        <LoadToast toast={loadToast} onDismiss={() => setLoadToast(null)} />
+      )}
     </div>
   );
 }

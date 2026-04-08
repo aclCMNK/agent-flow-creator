@@ -6,6 +6,7 @@
  * Features:
  *   - Shows agent name (and description as a subtitle if present)
  *   - Shows agent type badge ("Agent" / "Sub-Agent") and orchestrator indicator
+ *   - Single-click on the name row calls onSelect (opens detail panel)
  *   - Edit (✏️) button opens the AgentEditModal
  *   - Delete (✕) button removes the agent from state (canvas + tree)
  *   - Double-click on the name opens the AgentEditModal
@@ -19,23 +20,34 @@ import { useAgentFlowStore } from "../store/agentFlowStore.ts";
 
 export interface AgentTreeItemProps {
   agent: CanvasAgent;
+  /** Called when the user single-clicks to select / inspect this agent */
+  onSelect?: (id: string) => void;
+  /** Whether this item is currently selected */
+  selected?: boolean;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export function AgentTreeItem({ agent }: AgentTreeItemProps) {
+export function AgentTreeItem({ agent, onSelect, selected = false }: AgentTreeItemProps) {
   const openEditModal = useAgentFlowStore((s) => s.openEditModal);
   const deleteAgent = useAgentFlowStore((s) => s.deleteAgent);
 
   return (
-    <div className="agent-tree-item">
+    <div
+      className={`agent-tree-item${selected ? " agent-tree-item--selected" : ""}`}
+      onClick={() => onSelect?.(agent.id)}
+      role="button"
+      tabIndex={0}
+      aria-selected={selected}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect?.(agent.id); }}
+    >
       {/* Name + optional description + type badges */}
       <div className="agent-tree-item__info">
         <div className="agent-tree-item__title-row">
           <span
             className="agent-tree-item__name"
-            onDoubleClick={() => openEditModal(agent.id)}
-            title="Double-click to edit"
+            onDoubleClick={(e) => { e.stopPropagation(); openEditModal(agent.id); }}
+            title="Click to inspect · Double-click to edit"
           >
             {agent.name}
           </span>
@@ -61,11 +73,11 @@ export function AgentTreeItem({ agent }: AgentTreeItemProps) {
         )}
       </div>
 
-      {/* Action buttons — visible on hover */}
+      {/* Action buttons — visible on hover. stopPropagation so they don't trigger onSelect */}
       <div className="agent-tree-item__actions">
         <button
           className="agent-tree-item__btn agent-tree-item__btn--edit"
-          onClick={() => openEditModal(agent.id)}
+          onClick={(e) => { e.stopPropagation(); openEditModal(agent.id); }}
           title="Edit agent"
           aria-label={`Edit ${agent.name}`}
         >
@@ -73,7 +85,7 @@ export function AgentTreeItem({ agent }: AgentTreeItemProps) {
         </button>
         <button
           className="agent-tree-item__btn agent-tree-item__btn--delete"
-          onClick={() => deleteAgent(agent.id)}
+          onClick={(e) => { e.stopPropagation(); deleteAgent(agent.id); }}
           title="Delete agent"
           aria-label={`Delete ${agent.name}`}
         >

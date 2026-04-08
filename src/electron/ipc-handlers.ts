@@ -118,6 +118,7 @@ function serializeProjectModel(model: ProjectModel): SerializableProjectModel {
       toAgentId: c.toAgentId,
       label: c.label,
       type: c.type,
+      metadata: c.metadata,
     })),
     properties: model.afproj.properties ?? {},
     entrypointId: model.entrypoint?.ref.id,
@@ -126,6 +127,12 @@ function serializeProjectModel(model: ProjectModel): SerializableProjectModel {
 }
 
 function serializeAgentModel(agent: AgentModel): SerializableAgentModel {
+  // Extract agentType and isOrchestrator from .adata.metadata
+  const rawType = agent.adata.metadata?.agentType;
+  const agentType: "Agent" | "Sub-Agent" =
+    rawType === "Sub-Agent" ? "Sub-Agent" : "Agent";
+  const isOrchestrator = agent.adata.metadata?.isOrchestrator === "true";
+
   return {
     id: agent.ref.id,
     name: agent.ref.name,
@@ -134,6 +141,8 @@ function serializeAgentModel(agent: AgentModel): SerializableAgentModel {
     isEntrypoint: agent.ref.isEntrypoint,
     position: agent.ref.position,
     description: agent.adata.description,
+    agentType,
+    isOrchestrator,
     aspects: agent.adata.aspects.map((a) => ({
       id: a.id,
       name: a.name,
