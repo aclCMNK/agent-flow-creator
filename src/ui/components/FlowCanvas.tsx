@@ -71,8 +71,10 @@ function clampZoom(z: number): number {
 
 // ── Link colors & geometry ─────────────────────────────────────────────────
 
-export const LINK_COLOR = "#6366f1";           // indigo — matches --color-primary
-export const LINK_SELECTED_COLOR = "#a5b4fc";  // lighter indigo accent for selected
+export const LINK_COLOR = "#6366f1";                // indigo — Delegation (matches --color-primary)
+export const LINK_SELECTED_COLOR = "#a5b4fc";       // lighter indigo accent for selected Delegation
+export const LINK_RESPONSE_COLOR = "#AE9400";       // dark yellow — Response rule type
+export const LINK_RESPONSE_SELECTED_COLOR = "#D4B800"; // brighter yellow for selected Response
 
 /** Base stroke width for a normal (unselected) link. */
 const LINK_STROKE_WIDTH = 2.5;
@@ -535,7 +537,7 @@ function arrowheadPoints(
 
 interface LinksSvgProps {
   agents: Array<{ id: string; x: number; y: number; isOrchestrator: boolean }>;
-  links: Array<{ id: string; fromAgentId: string; toAgentId: string }>;
+  links: Array<{ id: string; fromAgentId: string; toAgentId: string; ruleType: string }>;
   selectedLinkId: string | null;
   /** Live drag state for the in-progress link being drawn */
   linkDrag: LinkDragState | null;
@@ -682,7 +684,10 @@ function LinksSvg({ agents, links, selectedLinkId, linkDrag, onLinkClick }: Link
         const to   = getNodeCenter(toAgent.x,   toAgent.y,   toNodeW);
 
         const isSelected = link.id === selectedLinkId;
-        const strokeColor = isSelected ? LINK_SELECTED_COLOR : LINK_COLOR;
+        const isResponse = link.ruleType === "Response";
+        const baseColor     = isResponse ? LINK_RESPONSE_COLOR : LINK_COLOR;
+        const selectedColor = isResponse ? LINK_RESPONSE_SELECTED_COLOR : LINK_SELECTED_COLOR;
+        const strokeColor = isSelected ? selectedColor : baseColor;
         const strokeWidth = isSelected
           ? LINK_STROKE_WIDTH + LINK_STROKE_SELECTED_EXTRA
           : LINK_STROKE_WIDTH;
@@ -725,7 +730,7 @@ function LinksSvg({ agents, links, selectedLinkId, linkDrag, onLinkClick }: Link
               <path
                 d={d}
                 fill="none"
-                stroke={LINK_SELECTED_COLOR}
+                stroke={selectedColor}
                 strokeWidth={strokeWidth + 5}
                 strokeLinecap="round"
                 opacity={0.18}
@@ -822,6 +827,7 @@ export function FlowCanvas() {
   const addLink         = useAgentFlowStore((s) => s.addLink);
   const deleteLink      = useAgentFlowStore((s) => s.deleteLink);
   const selectLink      = useAgentFlowStore((s) => s.selectLink);
+  const setSelectionContext = useAgentFlowStore((s) => s.setSelectionContext);
 
   // Project store (for persisting viewport state)
   const project      = useProjectStore((s) => s.project);
@@ -936,9 +942,10 @@ export function FlowCanvas() {
       commitPlacement(x, y);
       return;
     }
-    // Click on blank canvas → deselect any selected link
+    // Click on blank canvas → deselect any selected link and clear selection context
     selectLink(null);
-  }, [isPlacing, commitPlacement, selectLink]);
+    setSelectionContext("none");
+  }, [isPlacing, commitPlacement, selectLink, setSelectionContext]);
 
   // Escape key cancels placement
   useEffect(() => {
@@ -1132,6 +1139,9 @@ export function FlowCanvas() {
     const agent = agentsNow.find((a) => a.id === agentId);
     if (!agent) return;
 
+    // Moving a node → set selection context to "node"
+    setSelectionContext("node");
+
     const vp = viewportRef2.current;
     const mouseCanvasX = (e.clientX - rect.left - vp.panX) / vp.zoom;
     const mouseCanvasY = (e.clientY - rect.top  - vp.panY) / vp.zoom;
@@ -1185,7 +1195,7 @@ export function FlowCanvas() {
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [isPlacing, activeTool, canvasRefForDrag]);
+  }, [isPlacing, activeTool, canvasRefForDrag, setSelectionContext]);
 
   // ── Link CONNECT drag (node body) ─────────────────────────────────────────
 
@@ -1201,6 +1211,9 @@ export function FlowCanvas() {
     const agent = agents.find((a) => a.id === agentId);
     if (!agent) return;
 
+    // A node body interaction → set selection context to "node"
+    setSelectionContext("node");
+
     const nodeW = getNodeW(agent.isOrchestrator);
     const center = getNodeCenter(agent.x, agent.y, nodeW);
     const cur = clientToCanvas(e.clientX, e.clientY);
@@ -1215,7 +1228,7 @@ export function FlowCanvas() {
     };
     linkDragRef.current = state;
     setLinkDrag({ ...state });
-  }, [isPlacing, agents, activeTool]);
+  }, [isPlacing, agents, activeTool, setSelectionContext]);
 
   // Node hover callbacks (used during link-drag to highlight drop targets)
   const handleNodeEnterDuringLink = useCallback((agentId: string) => {
@@ -1273,8 +1286,10 @@ export function FlowCanvas() {
   // ── Link click (select) ───────────────────────────────────────────────────
   const handleLinkClick = useCallback((linkId: string, e: React.MouseEvent<SVGElement>) => {
     e.stopPropagation();
-    selectLink(linkId === selectedLinkId ? null : linkId);
-  }, [selectLink, selectedLinkId]);
+    const next = linkId === selectedLinkId ? null : linkId;
+    selectLink(next);
+    setSelectionContext(next !== null ? "link" : "none");
+  }, [selectLink, selectedLinkId, setSelectionContext]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 

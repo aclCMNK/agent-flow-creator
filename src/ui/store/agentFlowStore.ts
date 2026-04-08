@@ -43,6 +43,21 @@ export type AgentType = "Agent" | "Sub-Agent";
  */
 export type InputPortId = "left" | "bottom" | "top";
 
+/**
+ * Rule type for a connection:
+ *   "Delegation" — the source agent delegates work to the target agent.
+ *   "Response"   — the source agent sends a response back to the target agent.
+ */
+export type LinkRuleType = "Delegation" | "Response";
+
+/**
+ * Delegation type — only meaningful when ruleType === "Delegation".
+ *   "Optional"    — the delegation may or may not happen.
+ *   "Mandatory"   — the delegation always happens.
+ *   "Conditional" — the delegation happens based on a condition.
+ */
+export type DelegationType = "Optional" | "Mandatory" | "Conditional";
+
 /** A directed link from one agent node center to another agent node center */
 export interface AgentLink {
   /** Unique link identifier */
@@ -51,6 +66,21 @@ export interface AgentLink {
   fromAgentId: string;
   /** ID of the target agent */
   toAgentId: string;
+  /**
+   * Whether this connection represents a Delegation or a Response.
+   * Defaults to "Delegation".
+   */
+  ruleType: LinkRuleType;
+  /**
+   * Delegation sub-type — only relevant when ruleType === "Delegation".
+   * Defaults to "Optional".
+   */
+  delegationType: DelegationType;
+  /**
+   * Free-form rule description / condition logic written by the user.
+   * Can be empty.
+   */
+  ruleDetails: string;
 }
 
 /** A visual agent node placed on the canvas */
@@ -81,6 +111,16 @@ export interface AgentEditFields {
   isOrchestrator?: boolean;
 }
 
+/** Partial fields that can be updated on a link's rule */
+export interface LinkRuleFields {
+  ruleType?: LinkRuleType;
+  delegationType?: DelegationType;
+  ruleDetails?: string;
+}
+
+/** The type of entity currently selected in the canvas */
+export type SelectionContext = "none" | "node" | "link";
+
 /** State for the flow store */
 export interface AgentFlowState {
   /** All agent nodes placed on the canvas */
@@ -96,6 +136,16 @@ export interface AgentFlowState {
   links: AgentLink[];
   /** ID of the currently selected link (for deletion), or null */
   selectedLinkId: string | null;
+  /**
+   * Whether the right-side properties panel is open (expanded) or collapsed.
+   * Persisted to .afproj as ui.panelOpen.
+   */
+  panelOpen: boolean;
+  /**
+   * What is currently selected in the canvas — determines which placeholder
+   * the properties panel shows.
+   */
+  selectionContext: SelectionContext;
 }
 
 /** Actions for the flow store */
@@ -137,6 +187,23 @@ export interface AgentFlowActions {
   deleteLink(id: string): void;
   /** Select a link (for deletion or inspection) */
   selectLink(id: string | null): void;
+  /**
+   * Update one or more rule fields on a link.
+   * Used by the Properties Panel form when a link is selected.
+   */
+  updateLink(id: string, fields: LinkRuleFields): void;
+  /** Open (expand) the right-side properties panel */
+  openPanel(): void;
+  /** Close (collapse) the right-side properties panel */
+  closePanel(): void;
+  /** Toggle the panel open/closed */
+  togglePanel(): void;
+  /**
+   * Set the current canvas selection context.
+   * Controls which placeholder message the properties panel displays.
+   * Pass "none" when deselecting.
+   */
+  setSelectionContext(ctx: SelectionContext): void;
 }
 
 export type AgentFlowStore = AgentFlowState & AgentFlowActions;
@@ -149,6 +216,8 @@ const initialState: AgentFlowState = {
   editingAgentId: null,
   links: [],
   selectedLinkId: null,
+  panelOpen: true,
+  selectionContext: "none",
 };
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -250,6 +319,9 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
         id: uuid(),
         fromAgentId,
         toAgentId,
+        ruleType: "Delegation",
+        delegationType: "Optional",
+        ruleDetails: "",
       };
       return { links: [...state.links, newLink] };
     });
@@ -264,5 +336,40 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
 
   selectLink(id) {
     set({ selectedLinkId: id });
+  },
+
+  updateLink(id, fields) {
+    set((state) => ({
+      links: state.links.map((l) => {
+        if (l.id !== id) return l;
+        return {
+          ...l,
+          ruleType:
+            fields.ruleType !== undefined ? fields.ruleType : l.ruleType,
+          delegationType:
+            fields.delegationType !== undefined
+              ? fields.delegationType
+              : l.delegationType,
+          ruleDetails:
+            fields.ruleDetails !== undefined ? fields.ruleDetails : l.ruleDetails,
+        };
+      }),
+    }));
+  },
+
+  openPanel() {
+    set({ panelOpen: true });
+  },
+
+  closePanel() {
+    set({ panelOpen: false });
+  },
+
+  togglePanel() {
+    set((state) => ({ panelOpen: !state.panelOpen }));
+  },
+
+  setSelectionContext(ctx) {
+    set({ selectionContext: ctx });
   },
 }));

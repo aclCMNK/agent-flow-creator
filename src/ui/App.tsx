@@ -24,6 +24,7 @@ import { FlowCanvas } from "./components/FlowCanvas.tsx";
 import { AgentTreeItem } from "./components/AgentTreeItem.tsx";
 import { AgentEditModal } from "./components/AgentEditModal.tsx";
 import { AssetPanel } from "./components/AssetPanel/index.ts";
+import { PropertiesPanel } from "./components/PropertiesPanel.tsx";
 
 // ── Editor View ────────────────────────────────────────────────────────────
 // Shows the loaded project with an agent list panel + canvas placeholder.
@@ -180,107 +181,112 @@ function EditorView() {
           )}
         </aside>
 
-        {/* ── Canvas ─────────────────────────────────────────────── */}
-        <section className="editor-view__canvas-section" aria-label="Flow canvas">
-          {selectedAgent ? (
-            // ── Agent detail panel ──────────────────────────────────
-            <div className="editor-view__agent-detail">
-              <header className="editor-view__detail-header">
-                <h2 className="editor-view__detail-name">{selectedAgent.name}</h2>
-                {selectedAgent.isEntrypoint && (
-                  <span className="agent-card__badge agent-card__badge--entrypoint">
-                    ⚡ entrypoint
-                  </span>
+        {/* ── Center: canvas + agent detail ──────────────────────── */}
+        <div className="editor-view__canvas-area">
+          <section className="editor-view__canvas-section" aria-label="Flow canvas">
+            {selectedAgent ? (
+              // ── Agent detail panel ────────────────────────────────────
+              <div className="editor-view__agent-detail">
+                <header className="editor-view__detail-header">
+                  <h2 className="editor-view__detail-name">{selectedAgent.name}</h2>
+                  {selectedAgent.isEntrypoint && (
+                    <span className="agent-card__badge agent-card__badge--entrypoint">
+                      ⚡ entrypoint
+                    </span>
+                  )}
+                  <button
+                    className="editor-view__detail-close"
+                    onClick={() => setSelectedAgentId(null)}
+                    aria-label="Close agent detail"
+                  >
+                    ✕
+                  </button>
+                </header>
+
+                <dl className="editor-view__detail-meta">
+                  <dt>ID</dt>
+                  <dd><code>{selectedAgent.id}</code></dd>
+                  <dt>Description</dt>
+                  <dd>{selectedAgent.description || <em>No description</em>}</dd>
+                  <dt>Profile</dt>
+                  <dd><code>{selectedAgent.profilePath}</code></dd>
+                  <dt>Metadata</dt>
+                  <dd><code>{selectedAgent.adataPath}</code></dd>
+                </dl>
+
+                {selectedAgent.aspects.length > 0 && (
+                  <section className="editor-view__detail-section">
+                    <h3 className="editor-view__detail-section-title">
+                      Aspects ({selectedAgent.aspects.length})
+                    </h3>
+                    <ul className="editor-view__detail-list">
+                      {selectedAgent.aspects.map((a) => (
+                        <li key={a.id} className={`editor-view__detail-item ${a.enabled ? "" : "editor-view__detail-item--disabled"}`}>
+                          <span className="editor-view__detail-item-name">{a.name}</span>
+                          <code className="editor-view__detail-item-path">{a.filePath}</code>
+                          <span className="editor-view__detail-item-status">
+                            {a.enabled ? "✅" : "○"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 )}
-                <button
-                  className="editor-view__detail-close"
-                  onClick={() => setSelectedAgentId(null)}
-                  aria-label="Close agent detail"
-                >
-                  ✕
-                </button>
-              </header>
 
-              <dl className="editor-view__detail-meta">
-                <dt>ID</dt>
-                <dd><code>{selectedAgent.id}</code></dd>
-                <dt>Description</dt>
-                <dd>{selectedAgent.description || <em>No description</em>}</dd>
-                <dt>Profile</dt>
-                <dd><code>{selectedAgent.profilePath}</code></dd>
-                <dt>Metadata</dt>
-                <dd><code>{selectedAgent.adataPath}</code></dd>
-              </dl>
+                {selectedAgent.skills.length > 0 && (
+                  <section className="editor-view__detail-section">
+                    <h3 className="editor-view__detail-section-title">
+                      Skills ({selectedAgent.skills.length})
+                    </h3>
+                    <ul className="editor-view__detail-list">
+                      {selectedAgent.skills.map((s) => (
+                        <li key={s.id} className={`editor-view__detail-item ${s.enabled ? "" : "editor-view__detail-item--disabled"}`}>
+                          <span className="editor-view__detail-item-name">{s.name}</span>
+                          <code className="editor-view__detail-item-path">{s.filePath}</code>
+                          <span className="editor-view__detail-item-status">
+                            {s.enabled ? "✅" : "○"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
 
-              {selectedAgent.aspects.length > 0 && (
-                <section className="editor-view__detail-section">
-                  <h3 className="editor-view__detail-section-title">
-                    Aspects ({selectedAgent.aspects.length})
-                  </h3>
-                  <ul className="editor-view__detail-list">
-                    {selectedAgent.aspects.map((a) => (
-                      <li key={a.id} className={`editor-view__detail-item ${a.enabled ? "" : "editor-view__detail-item--disabled"}`}>
-                        <span className="editor-view__detail-item-name">{a.name}</span>
-                        <code className="editor-view__detail-item-path">{a.filePath}</code>
-                        <span className="editor-view__detail-item-status">
-                          {a.enabled ? "✅" : "○"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
+                {selectedAgent.subagents.length > 0 && (
+                  <section className="editor-view__detail-section">
+                    <h3 className="editor-view__detail-section-title">
+                      Subagents ({selectedAgent.subagents.length})
+                    </h3>
+                    <ul className="editor-view__detail-list">
+                      {selectedAgent.subagents.map((sub) => (
+                        <li key={sub.id} className="editor-view__detail-item">
+                          <span className="editor-view__detail-item-name">{sub.name}</span>
+                          <span className="editor-view__detail-item-desc">{sub.description}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
 
-              {selectedAgent.skills.length > 0 && (
-                <section className="editor-view__detail-section">
-                  <h3 className="editor-view__detail-section-title">
-                    Skills ({selectedAgent.skills.length})
-                  </h3>
-                  <ul className="editor-view__detail-list">
-                    {selectedAgent.skills.map((s) => (
-                      <li key={s.id} className={`editor-view__detail-item ${s.enabled ? "" : "editor-view__detail-item--disabled"}`}>
-                        <span className="editor-view__detail-item-name">{s.name}</span>
-                        <code className="editor-view__detail-item-path">{s.filePath}</code>
-                        <span className="editor-view__detail-item-status">
-                          {s.enabled ? "✅" : "○"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
+                {selectedAgent.profileContent && (
+                  <section className="editor-view__detail-section">
+                    <h3 className="editor-view__detail-section-title">Profile.md</h3>
+                    <pre className="editor-view__profile-preview">
+                      {selectedAgent.profileContent.slice(0, 800)}
+                      {selectedAgent.profileContent.length > 800 && "\n\n[… truncated for display]"}
+                    </pre>
+                  </section>
+                )}
+              </div>
+            ) : (
+              // ── Flow Canvas ────────────────────────────────────────────
+              <FlowCanvas />
+            )}
+          </section>
+        </div>
 
-              {selectedAgent.subagents.length > 0 && (
-                <section className="editor-view__detail-section">
-                  <h3 className="editor-view__detail-section-title">
-                    Subagents ({selectedAgent.subagents.length})
-                  </h3>
-                  <ul className="editor-view__detail-list">
-                    {selectedAgent.subagents.map((sub) => (
-                      <li key={sub.id} className="editor-view__detail-item">
-                        <span className="editor-view__detail-item-name">{sub.name}</span>
-                        <span className="editor-view__detail-item-desc">{sub.description}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              {selectedAgent.profileContent && (
-                <section className="editor-view__detail-section">
-                  <h3 className="editor-view__detail-section-title">Profile.md</h3>
-                  <pre className="editor-view__profile-preview">
-                    {selectedAgent.profileContent.slice(0, 800)}
-                    {selectedAgent.profileContent.length > 800 && "\n\n[… truncated for display]"}
-                  </pre>
-                </section>
-              )}
-            </div>
-          ) : (
-            // ── Flow Canvas ──────────────────────────────────────────
-            <FlowCanvas />
-          )}
-        </section>
+        {/* ── Right properties panel ─────────────────────────────── */}
+        <PropertiesPanel />
       </div>
 
       {/* ── Agent Edit Modal (portal-like, rendered at editor-view level) ── */}
