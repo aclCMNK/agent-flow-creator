@@ -12,7 +12,7 @@
  *
  * Content is context-sensitive based on selectionContext:
  *   "none"  → placeholder: "Select an agent or connection to edit its properties."
- *   "node"  → placeholder: "Agent properties will appear here."
+ *   "node"  → AgentAdapterForm (adapter section)
  *   "link"  → Link rule editing form (ruleType toggle + delegationType select + ruleDetails textarea)
  *
  * The link rule form reads/writes through agentFlowStore.updateLink(id, fields).
@@ -26,7 +26,7 @@
  * never blocks canvas panning/zooming. pointer-events are managed carefully.
  */
 
-import { useEffect } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useAgentFlowStore } from "../store/agentFlowStore.ts";
 import { useProjectStore } from "../store/projectStore.ts";
 import type { LinkRuleType, DelegationType } from "../store/agentFlowStore.ts";
@@ -35,8 +35,381 @@ import type { LinkRuleType, DelegationType } from "../store/agentFlowStore.ts";
 
 const PLACEHOLDER_MESSAGES = {
   none: "Select an agent or connection to edit its properties.",
-  node: "Agent properties will appear here.",
 } as const;
+
+// ── AgentAdapterForm ──────────────────────────────────────────────────────
+// Rendered inside the content area when selectionContext === "node".
+
+interface AgentAdapterFormProps {
+  agentId: string;
+}
+
+/** Adapter options available to the user */
+const ADAPTER_OPTIONS = [
+  { value: "", label: "None" },
+  { value: "opencode", label: "OpenCode" },
+] as const;
+
+type AdapterValue = "" | "opencode";
+
+/** Provider options for the OpenCode adapter */
+const OPENCODE_PROVIDERS: string[] = [
+  "GitHub-Copilot",
+  "OpenAI",
+  "OpenRouter",
+  "ClaudeCode",
+  "Ollama",
+  "OpenCode-Zen",
+  "OpenCode-Go",
+];
+
+function AgentAdapterForm({ agentId }: AgentAdapterFormProps) {
+  const project = useProjectStore((s) => s.project);
+
+  // ── Local UI state ─────────────────────────────────────────────────────
+  /** The value currently shown in the dropdown */
+  const [selectedAdapter, setSelectedAdapter] = useState<AdapterValue>("");
+  /** The adapter that has been successfully created (persisted in .adata) */
+  const [createdAdapter, setCreatedAdapter] = useState<string | null>(null);
+  /** Whether the initial adapter value has been loaded from .adata */
+  const [isLoaded, setIsLoaded] = useState(false);
+  /** Inline error text below the selector */
+  const [inlineError, setInlineError] = useState<string | null>(null);
+  /** Whether to show the floating toast */
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  /** Whether "Adapter created!" success text should show */
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Load existing adapter from .adata on agentId / project change ──────
+  useEffect(() => {
+    if (!project) return;
+
+    setIsLoaded(false);
+    setCreatedAdapter(null);
+    setSelectedAdapter("");
+    setInlineError(null);
+    setShowSuccess(false);
+
+    window.agentsFlow
+      .adataGetAdapter({ projectDir: project.projectDir, agentId })
+      .then((result) => {
+        if (result.success && result.adapter) {
+          setCreatedAdapter(result.adapter);
+          setSelectedAdapter(result.adapter as AdapterValue);
+        }
+        setIsLoaded(true);
+      })
+      .catch(() => {
+        setIsLoaded(true);
+      });
+  }, [agentId, project?.projectDir]);
+
+  // ── Toast management ───────────────────────────────────────────────────
+  function showErrorToast(msg: string) {
+    setToastMessage(msg);
+    setShowToast(true);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setShowToast(false);
+    }, 4000);
+  }
+
+  function dismissToast() {
+    setShowToast(false);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }
+
+  // ── Create Adapter button handler ──────────────────────────────────────
+  async function handleCreateAdapter() {
+    if (!project) return;
+
+    // Clear previous success
+    setShowSuccess(false);
+    setInlineError(null);
+
+    // Validate: must have a real adapter selected
+    if (!selectedAdapter) {
+      const msg = "Please select an adapter before creating.";
+      setInlineError(msg);
+      showErrorToast(msg);
+      return;
+    }
+
+    // Validate: adapter must not already exist for this agent
+    if (createdAdapter !== null) {
+      const msg = `Adapter "${createdAdapter}" is already created for this agent.`;
+      setInlineError(msg);
+      showErrorToast(msg);
+      return;
+    }
+
+    // Persist to .adata
+    try {
+      const result = await window.agentsFlow.adataSetAdapter({
+        projectDir: project.projectDir,
+        agentId,
+        adapter: selectedAdapter,
+      });
+
+      if (!result.success) {
+        const msg = result.error ?? "Failed to create adapter.";
+        setInlineError(msg);
+        showErrorToast(msg);
+        return;
+      }
+
+      // Success
+      setCreatedAdapter(selectedAdapter);
+      setInlineError(null);
+      setShowSuccess(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to create adapter.";
+      setInlineError(msg);
+      showErrorToast(msg);
+    }
+  }
+
+  // ── Loading state ─────────────────────────────────────────────────────
+  if (!isLoaded) {
+    return (
+      <div className="agent-adapter-form">
+        <div className="agent-adapter-form__loading">Loading...</div>
+      </div>
+    );
+  }
+
+  // Hide "None" option once an adapter has been created
+  const visibleOptions = createdAdapter !== null
+    ? ADAPTER_OPTIONS.filter((o) => o.value !== "")
+    : ADAPTER_OPTIONS;
+
+  return (
+    <div className="agent-adapter-form">
+      {/* ── Section heading ──────────────────────────────────────────────── */}
+      <div className="agent-adapter-form__section-heading">Adapter</div>
+
+      {/* ── Adapter selector ──────────────────────────────────────────────── */}
+      <div className="agent-adapter-form__field">
+        <label
+          className="agent-adapter-form__label"
+          htmlFor="adapter-select"
+        >
+          Adapter type
+        </label>
+        <select
+          id="adapter-select"
+          className="form-field__select agent-adapter-form__select"
+          value={selectedAdapter}
+          onChange={(e) => {
+            setSelectedAdapter(e.target.value as AdapterValue);
+            setInlineError(null);
+            setShowSuccess(false);
+          }}
+          aria-label="Select adapter"
+          // Lock selector once adapter is created
+          disabled={createdAdapter !== null}
+        >
+          {visibleOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Inline error below selector */}
+        {inlineError && (
+          <span className="agent-adapter-form__inline-error" role="alert">
+            {inlineError}
+          </span>
+        )}
+      </div>
+
+      {/* ── Create Adapter button ──────────────────────────────────────────── */}
+      <button
+        type="button"
+        className="btn btn--primary agent-adapter-form__create-btn"
+        onClick={handleCreateAdapter}
+        disabled={createdAdapter !== null}
+        aria-label="Create adapter"
+      >
+        Create Adapter
+      </button>
+
+      {/* Success message below button */}
+      {showSuccess && (
+        <span className="agent-adapter-form__success" role="status">
+          Adapter created!
+        </span>
+      )}
+
+      {/* ── OpenCode config fields (only when opencode adapter is active) ─── */}
+      {createdAdapter === "opencode" && (
+        <OpenCodeConfigForm agentId={agentId} />
+      )}
+
+      {/* ── Floating error toast ────────────────────────────────────────────── */}
+      {showToast && (
+        <div className="agent-graph-toast agent-graph-toast--error" role="alert">
+          <span>{toastMessage}</span>
+          <button
+            className="agent-graph-toast__close"
+            onClick={dismissToast}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── OpenCodeConfigForm ─────────────────────────────────────────────────────
+// Rendered below the adapter section when adapter === "opencode".
+// Shows a Provider dropdown and a Model text input.
+// Both values are persisted under the 'opencode' key in .adata.
+
+interface OpenCodeConfigFormProps {
+  agentId: string;
+}
+
+function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
+  const project = useProjectStore((s) => s.project);
+
+  const [provider, setProvider] = useState<string>(OPENCODE_PROVIDERS[0] ?? "");
+  const [model, setModel] = useState<string>("");
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Debounce timer for model field auto-save
+  const modelSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track last persisted values to avoid redundant writes
+  const lastPersistedRef = useRef<{ provider: string; model: string } | null>(null);
+
+  // ── Load existing config from .adata ────────────────────────────────────
+  useEffect(() => {
+    if (!project) return;
+
+    setIsLoaded(false);
+    setProvider(OPENCODE_PROVIDERS[0] ?? "");
+    setModel("");
+    lastPersistedRef.current = null;
+
+    window.agentsFlow
+      .adataGetOpenCodeConfig({ projectDir: project.projectDir, agentId })
+      .then((result) => {
+        if (result.success && result.config) {
+          setProvider(result.config.provider || (OPENCODE_PROVIDERS[0] ?? ""));
+          setModel(result.config.model || "");
+          lastPersistedRef.current = {
+            provider: result.config.provider || (OPENCODE_PROVIDERS[0] ?? ""),
+            model: result.config.model || "",
+          };
+        }
+        setIsLoaded(true);
+      })
+      .catch(() => {
+        setIsLoaded(true);
+      });
+  }, [agentId, project?.projectDir]);
+
+  // ── Persist helper ───────────────────────────────────────────────────────
+  const persist = useCallback(
+    (nextProvider: string, nextModel: string) => {
+      if (!project) return;
+      // Avoid redundant writes
+      const last = lastPersistedRef.current;
+      if (last && last.provider === nextProvider && last.model === nextModel) return;
+      lastPersistedRef.current = { provider: nextProvider, model: nextModel };
+      window.agentsFlow
+        .adataSetOpenCodeConfig({
+          projectDir: project.projectDir,
+          agentId,
+          config: { provider: nextProvider, model: nextModel },
+        })
+        .catch(() => {
+          // Persist failure is silent — non-blocking
+        });
+    },
+    [agentId, project]
+  );
+
+  // ── Provider change handler ──────────────────────────────────────────────
+  function handleProviderChange(value: string) {
+    setProvider(value);
+    persist(value, model);
+  }
+
+  // ── Model change handler (debounced auto-save) ───────────────────────────
+  function handleModelChange(value: string) {
+    setModel(value);
+    if (modelSaveTimerRef.current) clearTimeout(modelSaveTimerRef.current);
+    modelSaveTimerRef.current = setTimeout(() => {
+      persist(provider, value);
+    }, 500);
+  }
+
+  if (!isLoaded) return null;
+
+  return (
+    <div className="opencode-config-form">
+      {/* ── Section heading ─────────────────────────────────────────── */}
+      <div className="agent-adapter-form__section-heading">OpenCode Settings</div>
+
+      {/* ── Provider dropdown ───────────────────────────────────────── */}
+      <div className="agent-adapter-form__field">
+        <label
+          className="agent-adapter-form__label"
+          htmlFor="opencode-provider-select"
+        >
+          Provider
+        </label>
+        <select
+          id="opencode-provider-select"
+          className="form-field__select agent-adapter-form__select"
+          value={provider}
+          onChange={(e) => handleProviderChange(e.target.value)}
+          aria-label="OpenCode provider"
+        >
+          {OPENCODE_PROVIDERS.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* ── Model text input ─────────────────────────────────────────── */}
+      <div className="agent-adapter-form__field">
+        <label
+          className="agent-adapter-form__label"
+          htmlFor="opencode-model-input"
+        >
+          Model
+        </label>
+        <input
+          id="opencode-model-input"
+          type="text"
+          className="form-field__input opencode-config-form__model-input"
+          value={model}
+          onChange={(e) => handleModelChange(e.target.value)}
+          placeholder="e.g. gpt-4o, claude-sonnet-4-5..."
+          aria-label="OpenCode model"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {/* Non-blocking info when model is empty */}
+        {!model.trim() && (
+          <span className="opencode-config-form__model-info" role="status">
+            Please enter a model name.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ── LinkRuleForm ───────────────────────────────────────────────────────────
 // Rendered inside the content area when selectionContext === "link".
@@ -206,6 +579,7 @@ export function PropertiesPanel() {
   const panelOpen = useAgentFlowStore((s) => s.panelOpen);
   const selectionContext = useAgentFlowStore((s) => s.selectionContext);
   const selectedLinkId = useAgentFlowStore((s) => s.selectedLinkId);
+  const selectedNodeId = useAgentFlowStore((s) => s.selectedNodeId);
   const openPanel = useAgentFlowStore((s) => s.openPanel);
   const closePanel = useAgentFlowStore((s) => s.closePanel);
   const togglePanel = useAgentFlowStore((s) => s.togglePanel);
@@ -242,13 +616,8 @@ export function PropertiesPanel() {
 
   // ── Determine content to show ─────────────────────────────────────────────
   const showLinkForm = selectionContext === "link" && selectedLinkId !== null;
-  const showPlaceholder = !showLinkForm;
-
-  // Placeholder text for non-link contexts
-  const placeholderText =
-    selectionContext === "node"
-      ? PLACEHOLDER_MESSAGES.node
-      : PLACEHOLDER_MESSAGES.none;
+  const showNodeForm = selectionContext === "node" && selectedNodeId !== null;
+  const showPlaceholder = !showLinkForm && !showNodeForm;
 
   return (
     <aside
@@ -281,14 +650,17 @@ export function PropertiesPanel() {
           <LinkRuleForm linkId={selectedLinkId} />
         )}
 
-        {/* ── Placeholder (no selection or node selected) ─────────────── */}
+        {/* ── Agent adapter form ───────────────────────────────────────── */}
+        {showNodeForm && selectedNodeId && (
+          <AgentAdapterForm agentId={selectedNodeId} />
+        )}
+
+        {/* ── Placeholder (no selection) ───────────────────────────────── */}
         {showPlaceholder && (
           <div className="properties-panel__placeholder">
-            <span className="properties-panel__placeholder-icon" aria-hidden="true">
-              {selectionContext === "node" ? "🤖" : "📋"}
-            </span>
+            <span className="properties-panel__placeholder-icon" aria-hidden="true">📋</span>
             <p className="properties-panel__placeholder-text">
-              {placeholderText}
+              {PLACEHOLDER_MESSAGES.none}
             </p>
           </div>
         )}

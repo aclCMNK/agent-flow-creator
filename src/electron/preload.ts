@@ -33,6 +33,10 @@ import type {
   AssetReadResult,
   AssetOpResult,
   AssetDirEntry,
+  AdataAdapterRequest,
+  AdataSetAdapterRequest,
+  AdataGetOpenCodeConfigRequest,
+  AdataSetOpenCodeConfigRequest,
 } from "./bridge.types.ts";
 
 // ── Bridge implementation ─────────────────────────────────────────────────
@@ -130,6 +134,26 @@ const bridge: AgentsFlowBridge = {
 
   assetOpenMdDialog(): Promise<string | null> {
     return ipcRenderer.invoke(IPC_CHANNELS.ASSET_OPEN_MD_DIALOG);
+  },
+
+  // ── Adapter field ────────────────────────────────────────────────────────
+
+  adataGetAdapter(req: AdataAdapterRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_GET_ADAPTER, req);
+  },
+
+  adataSetAdapter(req: AdataSetAdapterRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_SET_ADAPTER, req);
+  },
+
+  // ── OpenCode config ───────────────────────────────────────────────────────
+
+  adataGetOpenCodeConfig(req: AdataGetOpenCodeConfigRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_GET_OPENCODE_CONFIG, req);
+  },
+
+  adataSetOpenCodeConfig(req: AdataSetOpenCodeConfigRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_SET_OPENCODE_CONFIG, req);
   },
 };
 

@@ -37,6 +37,12 @@ export interface SerializableAgentModel {
    * Defaults to false if missing.
    */
   isOrchestrator: boolean;
+  /**
+   * Whether this sub-agent is hidden from the @ autocomplete menu.
+   * From .adata.metadata.hidden. Defaults to false if missing.
+   * Only meaningful when agentType === "Sub-Agent".
+   */
+  hidden: boolean;
   aspects: SerializableAspectRef[];
   skills: SerializableSkillRef[];
   subagents: SerializableSubagentModel[];
@@ -251,6 +257,18 @@ export const IPC_CHANNELS = {
 
   // Opens a file picker dialog scoped to .md files for importing.
   ASSET_OPEN_MD_DIALOG: "asset:open-md-dialog",
+
+  // Reads the adapter field from a metadata/<agentId>.adata file.
+  ADATA_GET_ADAPTER: "adata:get-adapter",
+
+  // Writes (creates or updates) the adapter field in metadata/<agentId>.adata.
+  ADATA_SET_ADAPTER: "adata:set-adapter",
+
+  // Reads the opencode config object from metadata/<agentId>.adata.
+  ADATA_GET_OPENCODE_CONFIG: "adata:get-opencode-config",
+
+  // Writes (creates or updates) the opencode config object in metadata/<agentId>.adata.
+  ADATA_SET_OPENCODE_CONFIG: "adata:set-opencode-config",
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -319,6 +337,11 @@ export interface AgentGraphNode {
   type: "Agent" | "Sub-Agent";
   /** Whether this agent acts as an orchestrator */
   isOrchestrator: boolean;
+  /**
+   * Whether this sub-agent is hidden from the @ autocomplete menu.
+   * Only meaningful when type === "Sub-Agent". Always false for other types.
+   */
+  hidden: boolean;
   /** Canvas position */
   x: number;
   y: number;
@@ -360,6 +383,101 @@ export interface SaveAgentGraphResult {
 export interface ExportProjectResult {
   success: boolean;
   exportedPath?: string;
+  error?: string;
+}
+
+// ── Adapter field IPC types ────────────────────────────────────────────────
+
+/**
+ * Request payload to read or write the adapter field in a .adata file.
+ */
+export interface AdataAdapterRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** UUID of the agent */
+  agentId: string;
+}
+
+/**
+ * Request payload to write the adapter field in a .adata file.
+ */
+export interface AdataSetAdapterRequest extends AdataAdapterRequest {
+  /**
+   * The adapter identifier to set (e.g. "opencode").
+   * Pass null to clear the adapter.
+   */
+  adapter: string | null;
+}
+
+/**
+ * Result of reading the adapter field from a .adata file.
+ */
+export interface AdataGetAdapterResult {
+  success: boolean;
+  /** Current adapter value, or null if not set */
+  adapter: string | null;
+  error?: string;
+}
+
+/**
+ * Result of writing the adapter field to a .adata file.
+ */
+export interface AdataSetAdapterResult {
+  success: boolean;
+  error?: string;
+}
+
+// ── OpenCode config IPC types ──────────────────────────────────────────────
+// The opencode config object lives at .adata.opencode and contains
+// `provider` and `model` fields specific to the OpenCode adapter.
+
+/**
+ * The OpenCode adapter configuration stored under .adata.opencode.
+ */
+export interface OpenCodeConfig {
+  /** The LLM provider to use with OpenCode (e.g. "GitHub-Copilot", "OpenAI") */
+  provider: string;
+  /** The model identifier string */
+  model: string;
+}
+
+/**
+ * Request payload to read the opencode config from a .adata file.
+ */
+export interface AdataGetOpenCodeConfigRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** UUID of the agent */
+  agentId: string;
+}
+
+/**
+ * Request payload to write the opencode config in a .adata file.
+ */
+export interface AdataSetOpenCodeConfigRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** UUID of the agent */
+  agentId: string;
+  /** The opencode config to persist */
+  config: OpenCodeConfig;
+}
+
+/**
+ * Result of reading the opencode config from a .adata file.
+ */
+export interface AdataGetOpenCodeConfigResult {
+  success: boolean;
+  /** Current opencode config, or null if not set */
+  config: OpenCodeConfig | null;
+  error?: string;
+}
+
+/**
+ * Result of writing the opencode config to a .adata file.
+ */
+export interface AdataSetOpenCodeConfigResult {
+  success: boolean;
   error?: string;
 }
 
@@ -561,6 +679,34 @@ export interface AgentsFlowBridge {
    * Returns the chosen file path or null if the user cancelled.
    */
   assetOpenMdDialog(): Promise<string | null>;
+
+  // ── Adapter field ─────────────────────────────────────────────────────────
+
+  /**
+   * Reads the adapter field from the agent's .adata file.
+   * Returns null if the adapter is not set.
+   */
+  adataGetAdapter(req: AdataAdapterRequest): Promise<AdataGetAdapterResult>;
+
+  /**
+   * Writes (creates or updates) the adapter field in the agent's .adata file.
+   * Pass adapter: null to clear the adapter.
+   */
+  adataSetAdapter(req: AdataSetAdapterRequest): Promise<AdataSetAdapterResult>;
+
+  // ── OpenCode config ───────────────────────────────────────────────────────
+
+  /**
+   * Reads the opencode config object from the agent's .adata file.
+   * Returns null if not set.
+   */
+  adataGetOpenCodeConfig(req: AdataGetOpenCodeConfigRequest): Promise<AdataGetOpenCodeConfigResult>;
+
+  /**
+   * Writes (creates or updates) the opencode config object in the agent's .adata file.
+   * Stored under the 'opencode' top-level key.
+   */
+  adataSetOpenCodeConfig(req: AdataSetOpenCodeConfigRequest): Promise<AdataSetOpenCodeConfigResult>;
 }
 
 // ── Global type augmentation ──────────────────────────────────────────────

@@ -99,6 +99,12 @@ export interface CanvasAgent {
    * Only meaningful when type === "Agent".
    */
   isOrchestrator: boolean;
+  /**
+   * Whether this sub-agent is hidden from the @ autocomplete menu.
+   * Only meaningful when type === "Sub-Agent". Always false for other types.
+   * Defaults to false.
+   */
+  hidden: boolean;
   /** Position on the canvas (top-left corner of the node box) */
   x: number;
   y: number;
@@ -110,6 +116,11 @@ export interface AgentEditFields {
   description?: string;
   type?: AgentType;
   isOrchestrator?: boolean;
+  /**
+   * Whether this sub-agent is hidden from the @ autocomplete menu.
+   * Only meaningful when type === "Sub-Agent". Always persisted as false for other types.
+   */
+  hidden?: boolean;
 }
 
 /** Partial fields that can be updated on a link's rule */
@@ -147,6 +158,12 @@ export interface AgentFlowState {
    * the properties panel shows.
    */
   selectionContext: SelectionContext;
+  /**
+   * ID of the currently selected agent node on the canvas, or null.
+   * Set when the user clicks/drags a node. Used by PropertiesPanel to know
+   * which agent's properties to display.
+   */
+  selectedNodeId: string | null;
   /**
    * Whether there are unsaved changes in the agent graph (agents or links).
    * Set to true whenever agents/links are created, edited, or deleted.
@@ -216,6 +233,11 @@ export interface AgentFlowActions {
    */
   setSelectionContext(ctx: SelectionContext): void;
   /**
+   * Select a canvas agent node by id (or null to deselect).
+   * Also updates selectionContext to "node" (or "none" when null).
+   */
+  selectNode(id: string | null): void;
+  /**
    * Mark the graph as having unsaved changes.
    * Called automatically by all mutating actions.
    */
@@ -255,6 +277,7 @@ const initialState: AgentFlowState = {
   selectedLinkId: null,
   panelOpen: true,
   selectionContext: "none",
+  selectedNodeId: null,
   isDirty: false,
   isSavingGraph: false,
 };
@@ -275,6 +298,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       description: "",
       type: "Agent",
       isOrchestrator: false,
+      hidden: false,
       x,
       y,
     };
@@ -312,6 +336,11 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
           isOrchestrator:
             nextType === "Agent"
               ? (fields.isOrchestrator !== undefined ? fields.isOrchestrator : a.isOrchestrator)
+              : false,
+          // hidden is only meaningful for Sub-Agent; always false for other types
+          hidden:
+            nextType === "Sub-Agent"
+              ? (fields.hidden !== undefined ? fields.hidden : a.hidden)
               : false,
         };
       }),
@@ -419,6 +448,15 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
     set({ selectionContext: ctx });
   },
 
+  selectNode(id) {
+    set({
+      selectedNodeId: id,
+      selectionContext: id !== null ? "node" : "none",
+      // Deselect any link when a node is selected
+      selectedLinkId: null,
+    });
+  },
+
   markDirty() {
     set({ isDirty: true });
   },
@@ -438,6 +476,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       isPlacing: false,
       editingAgentId: null,
       selectedLinkId: null,
+      selectedNodeId: null,
       selectionContext: "none",
       isDirty: false,
       isSavingGraph: false,
@@ -452,6 +491,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       description: a.description,
       type: a.agentType ?? "Agent",
       isOrchestrator: a.isOrchestrator ?? false,
+      hidden: a.hidden ?? false,
       x: a.position?.x ?? 0,
       y: a.position?.y ?? 0,
     }));
@@ -491,6 +531,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       isPlacing: false,
       editingAgentId: null,
       selectedLinkId: null,
+      selectedNodeId: null,
       selectionContext: "none",
       isDirty: false,
       isSavingGraph: false,

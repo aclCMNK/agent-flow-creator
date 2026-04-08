@@ -80,6 +80,7 @@ export function AgentGraphSaveButton() {
       description: a.description,
       type: a.type,
       isOrchestrator: a.isOrchestrator,
+      hidden: a.type === "Sub-Agent" ? a.hidden : false,
       x: a.x,
       y: a.y,
     }));

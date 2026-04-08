@@ -10,6 +10,8 @@
  *   - Description field (optional, textarea)
  *   - Type select (Agent | Sub-Agent)
  *   - "is Orchestrator?" checkbox — shown only when Type === "Agent"
+ *   - "Hidden" toggle — shown only when Type === "Sub-Agent"
+ *     Hides the sub-agent from the @ autocomplete menu.
  *   - Save button — persists changes to agentFlowStore and closes
  *   - Cancel button — discards changes and closes
  *
@@ -38,6 +40,7 @@ export function AgentEditModal() {
   const [draftDescription, setDraftDescription] = useState("");
   const [draftType, setDraftType] = useState<AgentType>("Agent");
   const [draftIsOrchestrator, setDraftIsOrchestrator] = useState(false);
+  const [draftHidden, setDraftHidden] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,6 +51,7 @@ export function AgentEditModal() {
       setDraftDescription(agent.description);
       setDraftType(agent.type);
       setDraftIsOrchestrator(agent.isOrchestrator);
+      setDraftHidden(agent.hidden ?? false);
       // Auto-focus the name field after the DOM settles
       requestAnimationFrame(() => {
         nameInputRef.current?.focus();
@@ -69,6 +73,8 @@ export function AgentEditModal() {
       type: draftType,
       // Only pass isOrchestrator when type is Agent; store resets it otherwise
       isOrchestrator: draftType === "Agent" ? draftIsOrchestrator : false,
+      // Only pass hidden when type is Sub-Agent; store resets it otherwise
+      hidden: draftType === "Sub-Agent" ? draftHidden : false,
     });
     closeEditModal();
   }
@@ -89,6 +95,8 @@ export function AgentEditModal() {
     setDraftType(next);
     // Reset orchestrator flag when switching away from Agent
     if (next !== "Agent") setDraftIsOrchestrator(false);
+    // Reset hidden to false immediately when switching away from Sub-Agent
+    if (next !== "Sub-Agent") setDraftHidden(false);
   }
 
   const nameIsEmpty = draftName.trim().length === 0;
@@ -191,6 +199,34 @@ export function AgentEditModal() {
                 <span className="orch-checkbox__box" aria-hidden="true" />
                 <span className="orch-checkbox__label">is Orchestrator?</span>
               </label>
+            </div>
+          )}
+
+          {/* Hidden toggle — only visible when Type === "Sub-Agent" */}
+          {draftType === "Sub-Agent" && (
+            <div className="form-field">
+              <label className="agent-hidden-toggle" htmlFor="agent-edit-hidden">
+                <span className="agent-hidden-toggle__label">Hidden</span>
+                <span className="agent-hidden-toggle__track">
+                  <input
+                    id="agent-edit-hidden"
+                    type="checkbox"
+                    className="agent-hidden-toggle__input"
+                    checked={draftHidden}
+                    onChange={(e) => setDraftHidden(e.target.checked)}
+                  />
+                  <span className="agent-hidden-toggle__thumb" aria-hidden="true" />
+                </span>
+              </label>
+              <p className="agent-hidden-toggle__hint">
+                Hide a subagent from the @ autocomplete menu with{" "}
+                <code className="agent-hidden-toggle__code">hidden: true</code>.
+                Useful for internal subagents that should only be invoked
+                programmatically by other agents via the Task tool. This only
+                affects user visibility in the autocomplete menu. Hidden agents
+                can still be invoked by the model via the Task tool if
+                permissions allow.
+              </p>
             </div>
           )}
 

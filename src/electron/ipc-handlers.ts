@@ -51,6 +51,14 @@ import type {
   AssetFileEntry,
   AssetOpResult,
   AssetReadResult,
+  AdataAdapterRequest,
+  AdataSetAdapterRequest,
+  AdataGetAdapterResult,
+  AdataSetAdapterResult,
+  AdataGetOpenCodeConfigRequest,
+  AdataSetOpenCodeConfigRequest,
+  AdataGetOpenCodeConfigResult,
+  AdataSetOpenCodeConfigResult,
 } from "./bridge.types.ts";
 
 // ── Recents storage ────────────────────────────────────────────────────────
@@ -132,6 +140,7 @@ function serializeAgentModel(agent: AgentModel): SerializableAgentModel {
   const agentType: "Agent" | "Sub-Agent" =
     rawType === "Sub-Agent" ? "Sub-Agent" : "Agent";
   const isOrchestrator = agent.adata.metadata?.isOrchestrator === "true";
+  const hidden = agent.adata.metadata?.hidden === "true";
 
   return {
     id: agent.ref.id,
@@ -143,6 +152,7 @@ function serializeAgentModel(agent: AgentModel): SerializableAgentModel {
     description: agent.adata.description,
     agentType,
     isOrchestrator,
+    hidden,
     aspects: agent.adata.aspects.map((a) => ({
       id: a.id,
       name: a.name,
@@ -512,6 +522,8 @@ export function registerIpcHandlers(): void {
               ...((existing.metadata as Record<string, unknown>) ?? {}),
               agentType: node.type,
               isOrchestrator: String(node.isOrchestrator),
+              // hidden is only meaningful for Sub-Agent; always false for other types
+              hidden: node.type === "Sub-Agent" ? String(node.hidden) : "false",
             },
             createdAt: (existing.createdAt as string) ?? now,
             updatedAt: now,
@@ -822,6 +834,135 @@ export function registerIpcHandlers(): void {
         : await dialog.showOpenDialog(opts);
       if (result.canceled || result.filePaths.length === 0) return null;
       return result.filePaths[0] ?? null;
+    }
+  );
+
+  // ── Adapter field: read from .adata ────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_GET_ADAPTER,
+    async (_event, req: AdataAdapterRequest): Promise<AdataGetAdapterResult> => {
+      try {
+        const adataPath = join(req.projectDir, "metadata", `${req.agentId}.adata`);
+        let raw: string;
+        try {
+          raw = await readFile(adataPath, "utf-8");
+        } catch {
+          // File doesn't exist — no adapter set
+          return { success: true, adapter: null };
+        }
+        const adata = JSON.parse(raw) as Record<string, unknown>;
+        const meta = (adata.metadata as Record<string, unknown>) ?? {};
+        const adapter = typeof meta.adapter === "string" ? meta.adapter : null;
+        return { success: true, adapter };
+      } catch (err) {
+        return { success: false, adapter: null, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
+  // ── Adapter field: write to .adata ─────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_SET_ADAPTER,
+    async (_event, req: AdataSetAdapterRequest): Promise<AdataSetAdapterResult> => {
+      try {
+        const adataPath = join(req.projectDir, "metadata", `${req.agentId}.adata`);
+
+        // Read existing .adata (required — must exist for an agent in the graph)
+        let existing: Record<string, unknown> = {};
+        try {
+          const raw = await readFile(adataPath, "utf-8");
+          existing = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          return { success: false, error: `Agent .adata file not found: ${adataPath}` };
+        }
+
+        // Update only the adapter field inside metadata — preserve everything else
+        const existingMeta = (existing.metadata as Record<string, unknown>) ?? {};
+        const updatedMeta: Record<string, unknown> = { ...existingMeta };
+        if (req.adapter === null) {
+          delete updatedMeta.adapter;
+        } else {
+          updatedMeta.adapter = req.adapter;
+        }
+
+        const updated: Record<string, unknown> = {
+          ...existing,
+          metadata: updatedMeta,
+          updatedAt: new Date().toISOString(),
+        };
+
+        await atomicWriteJson(adataPath, updated);
+        console.log("[ipc] ADATA_SET_ADAPTER: written →", adataPath, "adapter →", req.adapter);
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[ipc] ADATA_SET_ADAPTER: error —", message);
+        return { success: false, error: message };
+      }
+    }
+  );
+
+  // ── OpenCode config: read from .adata ──────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_GET_OPENCODE_CONFIG,
+    async (_event, req: AdataGetOpenCodeConfigRequest): Promise<AdataGetOpenCodeConfigResult> => {
+      try {
+        const adataPath = join(req.projectDir, "metadata", `${req.agentId}.adata`);
+        let raw: string;
+        try {
+          raw = await readFile(adataPath, "utf-8");
+        } catch {
+          // File doesn't exist — no opencode config set
+          return { success: true, config: null };
+        }
+        const adata = JSON.parse(raw) as Record<string, unknown>;
+        const opencode = adata.opencode as Record<string, unknown> | undefined;
+        if (!opencode || typeof opencode !== "object") {
+          return { success: true, config: null };
+        }
+        const provider = typeof opencode.provider === "string" ? opencode.provider : "";
+        const model = typeof opencode.model === "string" ? opencode.model : "";
+        return { success: true, config: { provider, model } };
+      } catch (err) {
+        return { success: false, config: null, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
+  // ── OpenCode config: write to .adata ───────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_SET_OPENCODE_CONFIG,
+    async (_event, req: AdataSetOpenCodeConfigRequest): Promise<AdataSetOpenCodeConfigResult> => {
+      try {
+        const adataPath = join(req.projectDir, "metadata", `${req.agentId}.adata`);
+
+        // Read existing .adata (must exist — agent must have been saved first)
+        let existing: Record<string, unknown> = {};
+        try {
+          const raw = await readFile(adataPath, "utf-8");
+          existing = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          return { success: false, error: `Agent .adata file not found: ${adataPath}` };
+        }
+
+        // Write opencode config at the top-level 'opencode' key — preserve everything else
+        const updated: Record<string, unknown> = {
+          ...existing,
+          opencode: {
+            provider: req.config.provider,
+            model: req.config.model,
+          },
+          updatedAt: new Date().toISOString(),
+        };
+
+        await atomicWriteJson(adataPath, updated);
+        console.log("[ipc] ADATA_SET_OPENCODE_CONFIG: written →", adataPath, "config →", JSON.stringify(req.config));
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[ipc] ADATA_SET_OPENCODE_CONFIG: error —", message);
+        return { success: false, error: message };
+      }
     }
   );
 }

@@ -6,9 +6,10 @@
  * Interaction model:
  *   - POINTER mode (default):
  *     · MOVE node: drag only from the handle button (≡) in the top-right corner of each node.
- *     · CONNECT nodes: click and drag from any visible part of the node body
- *       (anywhere except the actions area: handle button and delete button).
+ *     · SELECT node: click anywhere on the node body → selects the node & opens properties panel.
+ *     · CONNECT nodes: drag from the dedicated connection grip (⊕ icon) visible on node hover.
  *       Release over a different node to create a link. Release elsewhere to cancel.
+ *       A plain click on the node body NEVER initiates a connection drag.
  *   - HAND (PAN) mode:
  *     · Click+drag anywhere on the canvas (even over nodes) to pan the viewport.
  *     · Node interactions (move, connect) are disabled while panning.
@@ -319,10 +320,14 @@ interface CanvasNodeProps {
   dragY?: number;
   /** Whether this node is highlighted as a link drop target */
   isLinkTarget: boolean;
+  /** Whether a link drag is currently in progress (from any node) */
+  isLinkDragActive: boolean;
   /** Called when the user starts dragging the handle (to move the node) */
   onHandleMouseDown: (id: string, e: React.MouseEvent) => void;
-  /** Called when user starts dragging from the node body (to create a link) */
-  onBodyLinkDragStart: (agentId: string, e: React.MouseEvent) => void;
+  /** Called when user starts dragging from the dedicated connection grip */
+  onGripMouseDown: (agentId: string, e: React.MouseEvent) => void;
+  /** Called when the node body is clicked (select only — no link drag) */
+  onBodyClick: (agentId: string) => void;
   /** Called when mouse enters this node during a link-drag */
   onNodeMouseEnterDuringLink: (agentId: string) => void;
   /** Called when mouse leaves this node during a link-drag */
@@ -334,9 +339,10 @@ interface CanvasNodeProps {
 function CanvasNode({
   id, name, type, isOrchestrator, x, y,
   isDragging, dragX, dragY,
-  isLinkTarget,
+  isLinkTarget, isLinkDragActive,
   onHandleMouseDown,
-  onBodyLinkDragStart,
+  onGripMouseDown,
+  onBodyClick,
   onNodeMouseEnterDuringLink,
   onNodeMouseLeaveDuringLink,
   onNodeMouseUpDuringLink,
@@ -348,11 +354,19 @@ function CanvasNode({
   const top  = isDragging && dragY !== undefined ? dragY : y;
   const nodeW = getNodeW(isOrchestrator);
 
-  /** The node body handles link-drag-start on mousedown */
+  /** Node body click — selects the node, never starts a link drag */
   function handleBodyMouseDown(e: React.MouseEvent) {
     if (e.button !== 0) return;
     e.stopPropagation();
-    onBodyLinkDragStart(id, e);
+    onBodyClick(id);
+  }
+
+  /** Connection grip mousedown — immediately starts a link drag */
+  function handleGripMouseDown(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onGripMouseDown(id, e);
   }
 
   return (
@@ -362,12 +376,14 @@ function CanvasNode({
         isDragging      ? "flow-canvas__node--dragging"     : "",
         isOrchestrator  ? "flow-canvas__node--orchestrator" : "",
         isLinkTarget    ? "flow-canvas__node--link-target"  : "",
+        isLinkDragActive ? "flow-canvas__node--link-drag-active" : "",
       ].filter(Boolean).join(" ")}
       style={{ left, top, width: nodeW, height: NODE_H }}
       aria-label={`Agent: ${name}`}
       onMouseEnter={() => { onNodeMouseEnterDuringLink(id); }}
       onMouseLeave={() => { onNodeMouseLeaveDuringLink(); }}
       onMouseUp={() => { onNodeMouseUpDuringLink(id); }}
+      onClick={(e) => { e.stopPropagation(); }}
     >
       {/* ── Actions row: handle (drag to move) + edit + delete ──────────── */}
       <div className="flow-canvas__node-actions">
@@ -402,11 +418,11 @@ function CanvasNode({
         </button>
       </div>
 
-      {/* ── Node body — drag here to start a link connection ────────────── */}
+      {/* ── Node body — click to select, NOT for starting connections ───── */}
       <div
-        className="flow-canvas__node-body flow-canvas__node-body--connectable"
+        className="flow-canvas__node-body"
         onMouseDown={handleBodyMouseDown}
-        title="Drag to connect to another agent"
+        title={name}
       >
         <span
           className="flow-canvas__node-label"
@@ -427,6 +443,20 @@ function CanvasNode({
             </span>
           )}
         </div>
+      </div>
+
+      {/* ── Connection grip — drag from here to create a link ────────────── */}
+      <div
+        className="flow-canvas__node-grip"
+        onMouseDown={handleGripMouseDown}
+        title="Drag to connect to another agent"
+        aria-label={`Connect from ${name}`}
+      >
+        <svg viewBox="0 0 12 12" width={12} height={12} aria-hidden="true">
+          <circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          <line x1="6" y1="2" x2="6" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
       </div>
     </div>
   );
@@ -828,6 +858,7 @@ export function FlowCanvas() {
   const deleteLink      = useAgentFlowStore((s) => s.deleteLink);
   const selectLink      = useAgentFlowStore((s) => s.selectLink);
   const setSelectionContext = useAgentFlowStore((s) => s.setSelectionContext);
+  const selectNode      = useAgentFlowStore((s) => s.selectNode);
 
   // Project store (for persisting viewport state)
   const project      = useProjectStore((s) => s.project);
@@ -944,8 +975,8 @@ export function FlowCanvas() {
     }
     // Click on blank canvas → deselect any selected link and clear selection context
     selectLink(null);
-    setSelectionContext("none");
-  }, [isPlacing, commitPlacement, selectLink, setSelectionContext]);
+    selectNode(null);
+  }, [isPlacing, commitPlacement, selectLink, selectNode]);
 
   // Escape key cancels placement
   useEffect(() => {
@@ -1139,8 +1170,8 @@ export function FlowCanvas() {
     const agent = agentsNow.find((a) => a.id === agentId);
     if (!agent) return;
 
-    // Moving a node → set selection context to "node"
-    setSelectionContext("node");
+    // Moving a node → select this node (sets selectionContext to "node")
+    selectNode(agentId);
 
     const vp = viewportRef2.current;
     const mouseCanvasX = (e.clientX - rect.left - vp.panX) / vp.zoom;
@@ -1195,9 +1226,9 @@ export function FlowCanvas() {
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [isPlacing, activeTool, canvasRefForDrag, setSelectionContext]);
+  }, [isPlacing, activeTool, canvasRefForDrag, selectNode]);
 
-  // ── Link CONNECT drag (node body) ─────────────────────────────────────────
+  // ── Link CONNECT drag (connection grip only) ──────────────────────────────
 
   const startLinkDrag = useCallback((agentId: string, e: React.MouseEvent) => {
     if (isPlacing) return;
@@ -1211,8 +1242,8 @@ export function FlowCanvas() {
     const agent = agents.find((a) => a.id === agentId);
     if (!agent) return;
 
-    // A node body interaction → set selection context to "node"
-    setSelectionContext("node");
+    // Grip interaction → also selects this node
+    selectNode(agentId);
 
     const nodeW = getNodeW(agent.isOrchestrator);
     const center = getNodeCenter(agent.x, agent.y, nodeW);
@@ -1228,7 +1259,15 @@ export function FlowCanvas() {
     };
     linkDragRef.current = state;
     setLinkDrag({ ...state });
-  }, [isPlacing, agents, activeTool, setSelectionContext]);
+  }, [isPlacing, agents, activeTool, selectNode]);
+
+  // ── Node body click — select only, never starts a link drag ───────────────
+
+  const handleBodyClick = useCallback((agentId: string) => {
+    if (isPlacing) return;
+    if (activeTool === "hand") return;
+    selectNode(agentId);
+  }, [isPlacing, activeTool, selectNode]);
 
   // Node hover callbacks (used during link-drag to highlight drop targets)
   const handleNodeEnterDuringLink = useCallback((agentId: string) => {
@@ -1357,8 +1396,10 @@ export function FlowCanvas() {
               linkDrag?.hoverTargetId === agent.id &&
               linkDrag?.fromAgentId !== agent.id
             }
+            isLinkDragActive={isDraggingLink}
             onHandleMouseDown={startDrag}
-            onBodyLinkDragStart={startLinkDrag}
+            onGripMouseDown={startLinkDrag}
+            onBodyClick={handleBodyClick}
             onNodeMouseEnterDuringLink={handleNodeEnterDuringLink}
             onNodeMouseLeaveDuringLink={handleNodeLeaveDuringLink}
             onNodeMouseUpDuringLink={handleNodeMouseUpDuringLink}
