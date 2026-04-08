@@ -35,6 +35,10 @@ import type {
   ValidateProjectRequest,
   RepairProjectRequest,
   SaveProjectRequest,
+  SaveAgentGraphRequest,
+  SaveAgentGraphResult,
+  AgentGraphNode,
+  AgentGraphEdge,
   ExportProjectRequest,
   SaveProjectResult,
   ExportProjectResult,
@@ -377,6 +381,175 @@ export function registerIpcHandlers(): void {
       return { success: false, error: message };
     }
   });
+
+  // ── Save agent graph ───────────────────────────────────────────────────
+  // Persists the visual agent graph (nodes + links) produced by the flow
+  // canvas editor to disk:
+  //
+  //   1. Reads the existing .afproj to preserve immutable fields.
+  //   2. Rebuilds the `agents[]` and `connections[]` arrays from the payload.
+  //   3. Writes the updated .afproj atomically.
+  //   4. Creates/updates `metadata/<uuid>.adata` for every agent node.
+  //   5. Deletes `.adata` files for agents that are no longer present.
+  //
+  // File format: pretty JSON (2-space indent), atomic write via temp+rename.
+  ipcMain.handle(
+    IPC_CHANNELS.SAVE_AGENT_GRAPH,
+    async (_event, req: SaveAgentGraphRequest): Promise<SaveAgentGraphResult> => {
+      console.log(
+        "[ipc] SAVE_AGENT_GRAPH: saving →",
+        req.projectDir,
+        `agents=${req.agents.length}`,
+        `edges=${req.edges.length}`
+      );
+      try {
+        const metadataDir = join(req.projectDir, "metadata");
+        const behaviorsDir = join(req.projectDir, "behaviors");
+
+        // ── 1. Locate the .afproj file ───────────────────────────────────
+        // Find the first .afproj in the project directory.
+        let afprojPath: string | null = null;
+        try {
+          const entries = await readdir(req.projectDir, { withFileTypes: true });
+          for (const e of entries) {
+            if (e.isFile() && e.name.endsWith(".afproj")) {
+              afprojPath = join(req.projectDir, e.name);
+              break;
+            }
+          }
+        } catch (err) {
+          return { success: false, error: `Cannot read project directory: ${err instanceof Error ? err.message : String(err)}` };
+        }
+
+        if (!afprojPath) {
+          return { success: false, error: "No .afproj file found in project directory." };
+        }
+
+        // ── 2. Read and parse the existing .afproj ───────────────────────
+        let existingAfproj: Record<string, unknown>;
+        try {
+          const raw = await readFile(afprojPath, "utf-8");
+          existingAfproj = JSON.parse(raw) as Record<string, unknown>;
+        } catch (err) {
+          return { success: false, error: `Cannot parse .afproj: ${err instanceof Error ? err.message : String(err)}` };
+        }
+
+        // ── 3. Build the updated agents[] and connections[] arrays ────────
+        const now = new Date().toISOString();
+
+        const agentRefs = req.agents.map((node: AgentGraphNode) => ({
+          id: node.id,
+          name: node.name,
+          profilePath: `behaviors/${node.id}/profile.md`,
+          adataPath: `metadata/${node.id}.adata`,
+          isEntrypoint: node.type === "Agent" && node.isOrchestrator,
+          position: { x: node.x, y: node.y },
+        }));
+
+        const connections = req.edges.map((edge: AgentGraphEdge) => ({
+          id: edge.id,
+          fromAgentId: edge.fromAgentId,
+          toAgentId: edge.toAgentId,
+          label: edge.relationType === "Delegation"
+            ? (edge.delegationType !== "Optional" ? edge.delegationType : undefined)
+            : edge.relationType,
+          type: "default" as const,
+          metadata: {
+            relationType: edge.relationType,
+            delegationType: edge.delegationType,
+            ruleDetails: edge.ruleDetails,
+          },
+        }));
+
+        // Merge into existing .afproj — preserve id, name, description,
+        // version, createdAt, and any extra properties.
+        const updatedAfproj = {
+          ...existingAfproj,
+          agents: agentRefs,
+          connections,
+          updatedAt: now,
+        };
+
+        // ── 4. Write updated .afproj atomically ──────────────────────────
+        await atomicWriteJson(afprojPath, updatedAfproj);
+        console.log("[ipc] SAVE_AGENT_GRAPH: .afproj written →", afprojPath);
+
+        // ── 5. Create / update metadata/<uuid>.adata for each agent ──────
+        await mkdir(metadataDir, { recursive: true });
+
+        for (const node of req.agents) {
+          const adataPath = join(metadataDir, `${node.id}.adata`);
+
+          // Merge with existing .adata if it exists (preserve aspects, skills,
+          // subagents, createdAt, and any other fields we don't touch here).
+          let existing: Record<string, unknown> = {};
+          try {
+            const raw = await readFile(adataPath, "utf-8");
+            existing = JSON.parse(raw) as Record<string, unknown>;
+          } catch {
+            // File doesn't exist yet — start fresh
+          }
+
+          const adata: Record<string, unknown> = {
+            version: 1,
+            agentId: node.id,
+            agentName: node.name,
+            description: node.description,
+            aspects: (existing.aspects as unknown[]) ?? [],
+            skills: (existing.skills as unknown[]) ?? [],
+            subagents: (existing.subagents as unknown[]) ?? [],
+            profilePath: `behaviors/${node.id}/profile.md`,
+            metadata: {
+              ...((existing.metadata as Record<string, unknown>) ?? {}),
+              agentType: node.type,
+              isOrchestrator: String(node.isOrchestrator),
+            },
+            createdAt: (existing.createdAt as string) ?? now,
+            updatedAt: now,
+          };
+
+          await atomicWriteJson(adataPath, adata);
+          console.log("[ipc] SAVE_AGENT_GRAPH: .adata written →", adataPath);
+
+          // Ensure the behaviors/<uuid>/ directory and profile.md exist
+          const agentBehaviorDir = join(behaviorsDir, node.id);
+          await mkdir(agentBehaviorDir, { recursive: true });
+          const profilePath = join(agentBehaviorDir, "profile.md");
+          // Only create profile.md if it doesn't already exist
+          const profileExists = existsSync(profilePath);
+          if (!profileExists) {
+            const profileContent = `# ${node.name}\n\n${node.description || ""}\n`;
+            await writeFile(profilePath, profileContent, { encoding: "utf-8", flag: "w" });
+            console.log("[ipc] SAVE_AGENT_GRAPH: profile.md created →", profilePath);
+          }
+        }
+
+        // ── 6. Delete .adata files for agents no longer in the graph ─────
+        const currentIds = new Set(req.agents.map((n) => n.id));
+        try {
+          const metaEntries = await readdir(metadataDir, { withFileTypes: true });
+          for (const e of metaEntries) {
+            if (!e.isFile() || !e.name.endsWith(".adata")) continue;
+            const agentId = e.name.slice(0, -6); // strip ".adata"
+            if (!currentIds.has(agentId)) {
+              const stale = join(metadataDir, e.name);
+              await rm(stale, { force: true });
+              console.log("[ipc] SAVE_AGENT_GRAPH: deleted stale .adata →", stale);
+            }
+          }
+        } catch {
+          // metadata dir may not exist yet — nothing to clean up
+        }
+
+        console.log("[ipc] SAVE_AGENT_GRAPH: complete");
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[ipc] SAVE_AGENT_GRAPH: unexpected error —", message);
+        return { success: false, error: message };
+      }
+    }
+  );
 
   // ── Export project ─────────────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.EXPORT_PROJECT, async (event, req: ExportProjectRequest): Promise<ExportProjectResult> => {

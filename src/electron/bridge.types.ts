@@ -193,6 +193,9 @@ export const IPC_CHANNELS = {
   // Saves changes back to disk (atomic write via lock-manager)
   SAVE_PROJECT: "project:save",
 
+  // Saves the agent graph (nodes + links) to .afproj and metadata/.adata files
+  SAVE_AGENT_GRAPH: "project:save-agent-graph",
+
   // Exports the project as a single JSON archive to a user-chosen path
   EXPORT_PROJECT: "project:export",
 
@@ -276,6 +279,62 @@ export interface ExportProjectRequest {
 }
 
 export interface SaveProjectResult {
+  success: boolean;
+  error?: string;
+}
+
+// ── Agent graph save types ─────────────────────────────────────────────────
+// Used by the Save button in the editor to persist the visual agent graph.
+
+/**
+ * Serialized agent node for the graph save payload.
+ * Contains all fields needed to write the .afproj entry and .adata file.
+ */
+export interface AgentGraphNode {
+  /** UUID of the agent */
+  id: string;
+  /** Human-readable name */
+  name: string;
+  /** Optional description */
+  description: string;
+  /** Agent role: "Agent" or "Sub-Agent" */
+  type: "Agent" | "Sub-Agent";
+  /** Whether this agent acts as an orchestrator */
+  isOrchestrator: boolean;
+  /** Canvas position */
+  x: number;
+  y: number;
+}
+
+/**
+ * Serialized edge for the graph save payload.
+ * Corresponds to AgentLink in the store.
+ */
+export interface AgentGraphEdge {
+  /** Link UUID */
+  id: string;
+  /** Source agent UUID */
+  fromAgentId: string;
+  /** Target agent UUID */
+  toAgentId: string;
+  /** Whether this link is a Delegation or Response */
+  relationType: "Delegation" | "Response";
+  /** Delegation sub-type (only meaningful when relationType === "Delegation") */
+  delegationType: "Optional" | "Mandatory" | "Conditional";
+  /** Free-form rule description */
+  ruleDetails: string;
+}
+
+export interface SaveAgentGraphRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** All agent nodes currently on the canvas */
+  agents: AgentGraphNode[];
+  /** All directed links between agents */
+  edges: AgentGraphEdge[];
+}
+
+export interface SaveAgentGraphResult {
   success: boolean;
   error?: string;
 }
@@ -416,6 +475,13 @@ export interface AgentsFlowBridge {
    * Saves changes to the project manifest back to disk.
    */
   saveProject(req: SaveProjectRequest): Promise<SaveProjectResult>;
+
+  /**
+   * Saves the agent graph (nodes + links) to the .afproj file and
+   * creates/updates metadata/<uuid>.adata files for each agent.
+   * Deletes .adata files for agents that no longer exist.
+   */
+  saveAgentGraph(req: SaveAgentGraphRequest): Promise<SaveAgentGraphResult>;
 
   /**
    * Exports the full project as a JSON archive.

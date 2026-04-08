@@ -53,6 +53,7 @@ const _stub: AgentsFlowBridge = {
   validateProject: () => notAvailable("validateProject"),
   repairProject: () => notAvailable("repairProject"),
   saveProject: () => notAvailable("saveProject"),
+  saveAgentGraph: () => notAvailable("saveAgentGraph"),
   exportProject: () => notAvailable("exportProject"),
   getRecentProjects: () => Promise.resolve([]),
   assetListDirs: () => Promise.resolve([]),

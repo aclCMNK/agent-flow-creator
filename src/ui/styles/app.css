@@ -4087,3 +4087,129 @@ button:disabled {
   resize: vertical;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* Agent Graph Save Button                                                     */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The Save button for the agent graph editor.
+ * Sits in the editor topbar alongside Validation / Assets / Export.
+ * Active (enabled, primary color) only when isDirty === true.
+ * Disabled (muted, no pointer) when there are no unsaved changes.
+ */
+
+.agent-graph-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background var(--transition), opacity var(--transition),
+    color var(--transition);
+  /* Disabled (clean) state: matches other muted topbar buttons */
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  cursor: default;
+  user-select: none;
+}
+
+/* Active (dirty) state: primary indigo, full pointer */
+.agent-graph-save-btn--active {
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+}
+
+.agent-graph-save-btn--active:hover {
+  background: var(--color-primary-hover);
+}
+
+/* Saving state: slightly muted while async op is running */
+.agent-graph-save-btn--saving {
+  opacity: 0.75;
+  cursor: wait;
+}
+
+/* Spinner inside the save button (same spec as project-save-bar__spinner) */
+.agent-graph-save-btn__spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+/* Agent Graph Toast Notification                                               */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Floating toast shown after save success or error.
+ * Fixed at the bottom-right of the viewport so it never overlaps canvas.
+ * Auto-dismissed after 2.5 s (success) or 5 s (error).
+ */
+
+.agent-graph-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: toast-slide-in 180ms ease forwards;
+  max-width: 360px;
+}
+
+.agent-graph-toast--success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.agent-graph-toast--error {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* The message text grows to fill remaining space */
+.agent-graph-toast > span:nth-child(2) {
+  flex: 1;
+}
+
+/* Dismiss button */
+.agent-graph-toast__close {
+  color: inherit;
+  opacity: 0.6;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: opacity var(--transition);
+}
+
+.agent-graph-toast__close:hover {
+  opacity: 1;
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+

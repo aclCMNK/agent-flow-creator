@@ -26,6 +26,7 @@ import type {
   ValidateProjectRequest,
   RepairProjectRequest,
   SaveProjectRequest,
+  SaveAgentGraphRequest,
   ExportProjectRequest,
   CreateProjectRequest,
   AssetDirContents,
@@ -77,6 +78,10 @@ const bridge: AgentsFlowBridge = {
 
   saveProject(req: SaveProjectRequest) {
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_PROJECT, req);
+  },
+
+  saveAgentGraph(req: SaveAgentGraphRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AGENT_GRAPH, req);
   },
 
   exportProject(req: ExportProjectRequest) {

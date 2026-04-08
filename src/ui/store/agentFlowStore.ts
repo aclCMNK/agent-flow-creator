@@ -146,6 +146,16 @@ export interface AgentFlowState {
    * the properties panel shows.
    */
   selectionContext: SelectionContext;
+  /**
+   * Whether there are unsaved changes in the agent graph (agents or links).
+   * Set to true whenever agents/links are created, edited, or deleted.
+   * Reset to false after a successful save.
+   */
+  isDirty: boolean;
+  /**
+   * Whether a graph save operation is in progress.
+   */
+  isSavingGraph: boolean;
 }
 
 /** Actions for the flow store */
@@ -204,6 +214,20 @@ export interface AgentFlowActions {
    * Pass "none" when deselecting.
    */
   setSelectionContext(ctx: SelectionContext): void;
+  /**
+   * Mark the graph as having unsaved changes.
+   * Called automatically by all mutating actions.
+   */
+  markDirty(): void;
+  /**
+   * Mark the graph as clean (no unsaved changes).
+   * Called after a successful save.
+   */
+  markClean(): void;
+  /**
+   * Set the isSavingGraph flag. Used by the save button during async save.
+   */
+  setSavingGraph(saving: boolean): void;
 }
 
 export type AgentFlowStore = AgentFlowState & AgentFlowActions;
@@ -218,6 +242,8 @@ const initialState: AgentFlowState = {
   selectedLinkId: null,
   panelOpen: true,
   selectionContext: "none",
+  isDirty: false,
+  isSavingGraph: false,
 };
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -242,6 +268,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
     set((state) => ({
       agents: [...state.agents, newAgent],
       isPlacing: false,
+      isDirty: true,
     }));
   },
 
@@ -254,6 +281,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       agents: state.agents.map((a) =>
         a.id === id ? { ...a, name: newName.trim() || a.name } : a
       ),
+      isDirty: true,
     }));
   },
 
@@ -274,6 +302,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
               : false,
         };
       }),
+      isDirty: true,
     }));
   },
 
@@ -287,6 +316,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
           ? null
           : state.selectedLinkId
         : null,
+      isDirty: true,
     }));
   },
 
@@ -295,6 +325,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       agents: state.agents.map((a) =>
         a.id === id ? { ...a, x, y } : a
       ),
+      isDirty: true,
     }));
   },
 
@@ -323,7 +354,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
         delegationType: "Optional",
         ruleDetails: "",
       };
-      return { links: [...state.links, newLink] };
+      return { links: [...state.links, newLink], isDirty: true };
     });
   },
 
@@ -331,6 +362,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
     set((state) => ({
       links: state.links.filter((l) => l.id !== id),
       selectedLinkId: state.selectedLinkId === id ? null : state.selectedLinkId,
+      isDirty: true,
     }));
   },
 
@@ -354,6 +386,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
             fields.ruleDetails !== undefined ? fields.ruleDetails : l.ruleDetails,
         };
       }),
+      isDirty: true,
     }));
   },
 
@@ -371,5 +404,17 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
 
   setSelectionContext(ctx) {
     set({ selectionContext: ctx });
+  },
+
+  markDirty() {
+    set({ isDirty: true });
+  },
+
+  markClean() {
+    set({ isDirty: false });
+  },
+
+  setSavingGraph(saving) {
+    set({ isSavingGraph: saving });
   },
 }));

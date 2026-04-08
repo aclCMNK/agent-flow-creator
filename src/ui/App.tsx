@@ -20,6 +20,7 @@ import { ProjectBrowser } from "./components/ProjectBrowser.tsx";
 import { ValidationPanel } from "./components/ValidationPanel.tsx";
 import { AgentCard } from "./components/AgentCard.tsx";
 import { ProjectSaveBar } from "./components/ProjectSaveBar.tsx";
+import { AgentGraphSaveButton } from "./components/AgentGraphSaveButton.tsx";
 import { FlowCanvas } from "./components/FlowCanvas.tsx";
 import { AgentTreeItem } from "./components/AgentTreeItem.tsx";
 import { AgentEditModal } from "./components/AgentEditModal.tsx";
@@ -92,6 +93,7 @@ function EditorView() {
           >
             Validation
           </button>
+          <AgentGraphSaveButton />
           <button
             className="editor-view__topbar-btn editor-view__topbar-btn--disabled"
             disabled
