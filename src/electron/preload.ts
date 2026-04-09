@@ -37,6 +37,11 @@ import type {
   AdataSetAdapterRequest,
   AdataGetOpenCodeConfigRequest,
   AdataSetOpenCodeConfigRequest,
+  AdataListProfilesRequest,
+  AdataAddProfileRequest,
+  AdataUpdateProfileRequest,
+  AdataRemoveProfileRequest,
+  AdataReorderProfilesRequest,
 } from "./bridge.types.ts";
 
 // ── Bridge implementation ─────────────────────────────────────────────────
@@ -154,6 +159,28 @@ const bridge: AgentsFlowBridge = {
 
   adataSetOpenCodeConfig(req: AdataSetOpenCodeConfigRequest) {
     return ipcRenderer.invoke(IPC_CHANNELS.ADATA_SET_OPENCODE_CONFIG, req);
+  },
+
+  // ── Agent Profiling ───────────────────────────────────────────────────────
+
+  adataListProfiles(req: AdataListProfilesRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_LIST_PROFILES, req);
+  },
+
+  adataAddProfile(req: AdataAddProfileRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_ADD_PROFILE, req);
+  },
+
+  adataUpdateProfile(req: AdataUpdateProfileRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_UPDATE_PROFILE, req);
+  },
+
+  adataRemoveProfile(req: AdataRemoveProfileRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_REMOVE_PROFILE, req);
+  },
+
+  adataReorderProfiles(req: AdataReorderProfilesRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.ADATA_REORDER_PROFILES, req);
   },
 };
 

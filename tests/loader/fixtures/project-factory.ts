@@ -216,7 +216,7 @@ export async function createProjectFixture(options: {
     }
   }
 
-  // Write behavior/skill markdown files
+  // Write behaviors/ markdown files
   if (!options.skipBehaviorFiles) {
     if (shouldWriteA) {
       await writeFile(

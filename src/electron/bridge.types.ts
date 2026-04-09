@@ -269,6 +269,25 @@ export const IPC_CHANNELS = {
 
   // Writes (creates or updates) the opencode config object in metadata/<agentId>.adata.
   ADATA_SET_OPENCODE_CONFIG: "adata:set-opencode-config",
+
+  // ── Agent Profiling channels ──────────────────────────────────────────────
+  // These channels manage the `profile[]` array inside metadata/<agentId>.adata.
+  // Each profile entry links an agent to a .md document under a named selector.
+
+  // Returns the full profile[] array for an agent (sorted by order).
+  ADATA_LIST_PROFILES: "adata:list-profiles",
+
+  // Appends a new profile entry to the agent's profile list.
+  ADATA_ADD_PROFILE: "adata:add-profile",
+
+  // Updates specific fields of an existing profile entry (by id).
+  ADATA_UPDATE_PROFILE: "adata:update-profile",
+
+  // Removes a profile entry by id (does NOT delete the .md file).
+  ADATA_REMOVE_PROFILE: "adata:remove-profile",
+
+  // Reorders the profile list by supplying an array of ids in the new order.
+  ADATA_REORDER_PROFILES: "adata:reorder-profiles",
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -479,6 +498,185 @@ export interface AdataGetOpenCodeConfigResult {
 export interface AdataSetOpenCodeConfigResult {
   success: boolean;
   error?: string;
+}
+
+// ── Agent Profiling IPC types ──────────────────────────────────────────────
+//
+// The `profile[]` array lives at the top level of each agent's .adata file.
+// These DTOs are the IPC-safe (structured-clone-safe) representations of
+// the AgentProfile domain type (src/types/agent.ts).
+//
+// Rule: ALL fields must be plain serialisable values (string, number, boolean,
+// plain objects, arrays).  No Map, Set, class instances, or undefined values
+// in required positions.
+
+/**
+ * IPC-safe representation of a single agent profile entry.
+ *
+ * Mirrors AgentProfile from src/types/agent.ts — kept as a separate
+ * interface so bridge.types.ts has no import dependency on the storage layer.
+ *
+ * Shape stored in .adata:
+ * ```json
+ * {
+ *   "id":       "550e8400-...",
+ *   "selector": "System Prompt",
+ *   "filePath": "behaviors/<agentId>/system.md",
+ *   "label":    "Core identity",
+ *   "order":    0,
+ *   "enabled":  true
+ * }
+ * ```
+ */
+export interface BridgeAgentProfile {
+  /** Stable UUID v4 — assigned on creation, never changes */
+  id: string;
+  /**
+   * Functional role label (e.g. "System Prompt", "Memory", "Tools").
+   * Free-form string; well-known values are listed in PROFILE_SELECTORS.
+   */
+  selector: string;
+  /**
+   * Relative path from project root to the .md document.
+   * Convention: `behaviors/<agentId>/<filename>.md`
+   */
+  filePath: string;
+  /** Optional human-readable label; falls back to the filename in the UI */
+  label?: string;
+  /**
+   * Rendering / compilation order within the same selector group.
+   * Non-negative integer; lower = earlier.
+   */
+  order: number;
+  /** When false the profile is stored but excluded from compiled output */
+  enabled: boolean;
+}
+
+// ── List profiles ─────────────────────────────────────────────────────────
+
+/** Request payload for ADATA_LIST_PROFILES */
+export interface AdataListProfilesRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** UUID of the agent */
+  agentId: string;
+}
+
+/** Result of listing the profile[] array from a .adata file */
+export interface AdataListProfilesResult {
+  success: boolean;
+  /** Sorted profile list (by order). Empty array when no profiles exist. */
+  profiles: BridgeAgentProfile[];
+  error?: string;
+  /**
+   * Structured error code for programmatic handling in the renderer.
+   * Maps to ProfileErrorCode in src/storage/profiles.ts.
+   */
+  errorCode?: "AGENT_NOT_FOUND" | "PROFILE_NOT_FOUND" | "INVALID_INPUT" | "UNKNOWN";
+}
+
+// ── Add profile ───────────────────────────────────────────────────────────
+
+/** Request payload for ADATA_ADD_PROFILE */
+export interface AdataAddProfileRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** UUID of the agent */
+  agentId: string;
+  /**
+   * Required fields for the new profile.
+   * `id` and default `order` are assigned by the handler.
+   */
+  selector: string;
+  filePath: string;
+  label?: string;
+  /** When omitted, appended after the current last entry */
+  order?: number;
+  /** Defaults to true when omitted */
+  enabled?: boolean;
+}
+
+/** Result of adding a new profile entry */
+export interface AdataAddProfileResult {
+  success: boolean;
+  /** The newly created profile entry (with assigned id and order) */
+  profile?: BridgeAgentProfile;
+  /** Complete updated profile list (sorted by order) */
+  profiles?: BridgeAgentProfile[];
+  error?: string;
+  errorCode?: "AGENT_NOT_FOUND" | "INVALID_INPUT" | "UNKNOWN";
+}
+
+// ── Update profile ────────────────────────────────────────────────────────
+
+/** Request payload for ADATA_UPDATE_PROFILE */
+export interface AdataUpdateProfileRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** UUID of the agent */
+  agentId: string;
+  /** UUID of the profile entry to update */
+  profileId: string;
+  /**
+   * Fields to update (partial).
+   * The `id` field is immutable and cannot be included here.
+   * Fields not present in this object retain their current values.
+   */
+  patch: Partial<Omit<BridgeAgentProfile, "id">>;
+}
+
+/** Result of updating a profile entry */
+export interface AdataUpdateProfileResult {
+  success: boolean;
+  /** Complete updated profile list (sorted by order) */
+  profiles?: BridgeAgentProfile[];
+  error?: string;
+  errorCode?: "AGENT_NOT_FOUND" | "PROFILE_NOT_FOUND" | "INVALID_INPUT" | "UNKNOWN";
+}
+
+// ── Remove profile ────────────────────────────────────────────────────────
+
+/** Request payload for ADATA_REMOVE_PROFILE */
+export interface AdataRemoveProfileRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** UUID of the agent */
+  agentId: string;
+  /** UUID of the profile entry to remove */
+  profileId: string;
+}
+
+/** Result of removing a profile entry */
+export interface AdataRemoveProfileResult {
+  success: boolean;
+  /** Complete updated profile list after removal */
+  profiles?: BridgeAgentProfile[];
+  error?: string;
+  errorCode?: "AGENT_NOT_FOUND" | "PROFILE_NOT_FOUND" | "UNKNOWN";
+}
+
+// ── Reorder profiles ──────────────────────────────────────────────────────
+
+/** Request payload for ADATA_REORDER_PROFILES */
+export interface AdataReorderProfilesRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+  /** UUID of the agent */
+  agentId: string;
+  /**
+   * Profile UUIDs in the desired new order.
+   * Profiles NOT listed are appended after the ordered ones.
+   */
+  orderedIds: string[];
+}
+
+/** Result of reordering the profile list */
+export interface AdataReorderProfilesResult {
+  success: boolean;
+  /** Complete updated profile list (sorted by new order) */
+  profiles?: BridgeAgentProfile[];
+  error?: string;
+  errorCode?: "AGENT_NOT_FOUND" | "UNKNOWN";
 }
 
 export interface RecentProject {
@@ -707,6 +905,39 @@ export interface AgentsFlowBridge {
    * Stored under the 'opencode' top-level key.
    */
   adataSetOpenCodeConfig(req: AdataSetOpenCodeConfigRequest): Promise<AdataSetOpenCodeConfigResult>;
+
+  // ── Agent Profiling ───────────────────────────────────────────────────────
+
+  /**
+   * Returns the full profile[] list for an agent, sorted by order.
+   * Returns an empty array when the agent has no profiles yet.
+   */
+  adataListProfiles(req: AdataListProfilesRequest): Promise<AdataListProfilesResult>;
+
+  /**
+   * Appends a new profile entry to the agent's profile list.
+   * Returns the newly created entry and the updated full list.
+   */
+  adataAddProfile(req: AdataAddProfileRequest): Promise<AdataAddProfileResult>;
+
+  /**
+   * Updates specific fields of an existing profile entry.
+   * Returns the complete updated profile list.
+   */
+  adataUpdateProfile(req: AdataUpdateProfileRequest): Promise<AdataUpdateProfileResult>;
+
+  /**
+   * Removes a profile entry by id.
+   * Does NOT delete the underlying .md file.
+   * Returns the complete updated profile list.
+   */
+  adataRemoveProfile(req: AdataRemoveProfileRequest): Promise<AdataRemoveProfileResult>;
+
+  /**
+   * Reorders the profile list by supplying profile UUIDs in the new desired order.
+   * Returns the complete updated profile list.
+   */
+  adataReorderProfiles(req: AdataReorderProfilesRequest): Promise<AdataReorderProfilesResult>;
 }
 
 // ── Global type augmentation ──────────────────────────────────────────────

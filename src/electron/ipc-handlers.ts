@@ -59,7 +59,22 @@ import type {
   AdataSetOpenCodeConfigRequest,
   AdataGetOpenCodeConfigResult,
   AdataSetOpenCodeConfigResult,
+  AdataListProfilesRequest,
+  AdataAddProfileRequest,
+  AdataUpdateProfileRequest,
+  AdataRemoveProfileRequest,
+  AdataReorderProfilesRequest,
 } from "./bridge.types.ts";
+
+import {
+  handleListProfiles,
+  handleAddProfile,
+  handleUpdateProfile,
+  handleRemoveProfile,
+  handleReorderProfiles,
+} from "./profile-handlers.ts";
+import { nodeFileAdapter } from "../storage/node-file-adapter.ts";
+import { migrateProjectProfiles } from "../storage/migrate-profiles.ts";
 
 // ── Recents storage ────────────────────────────────────────────────────────
 
@@ -333,6 +348,35 @@ export function registerIpcHandlers(): void {
     if (result.success && result.project) {
       console.log("[ipc] LOAD_PROJECT: success, agents →", result.project.agents.size);
       await addToRecentProjects(req.projectDir, result.project.afproj.name);
+
+      // ── Profile migration (idempotent) ─────────────────────────────────
+      // On every project load, ensure all .adata files have a `profile: []`
+      // key. This is a no-op for already-migrated files (idempotent) and
+      // silently upgrades legacy files that pre-date the profiling feature.
+      try {
+        const report = await migrateProjectProfiles(
+          nodeFileAdapter,
+          req.projectDir,
+          async (dirPath) => {
+            const entries = await readdir(dirPath, { withFileTypes: true });
+            return entries
+              .filter((e) => e.isFile())
+              .map((e) => e.name);
+          },
+        );
+        if (report.migrated > 0) {
+          console.log(
+            `[ipc] LOAD_PROJECT: profile migration — migrated=${report.migrated} ` +
+            `skipped=${report.skipped} errors=${report.errors}`,
+          );
+        }
+      } catch (migrateErr) {
+        // Migration failures are non-fatal — log and continue loading
+        console.warn(
+          "[ipc] LOAD_PROJECT: profile migration failed (non-fatal) —",
+          migrateErr instanceof Error ? migrateErr.message : String(migrateErr),
+        );
+      }
     } else {
       console.error("[ipc] LOAD_PROJECT: failed →", result.summary.errors, "errors");
     }
@@ -963,6 +1007,78 @@ export function registerIpcHandlers(): void {
         console.error("[ipc] ADATA_SET_OPENCODE_CONFIG: error —", message);
         return { success: false, error: message };
       }
+    }
+  );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Agent Profiling handlers
+  //
+  // All 5 handlers delegate to pure functions in profile-handlers.ts
+  // (testable without Electron). The Node-based FileAdapter is injected here.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── List profiles ──────────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_LIST_PROFILES,
+    async (_event, req: AdataListProfilesRequest) => {
+      console.log("[ipc] ADATA_LIST_PROFILES: agentId →", req.agentId);
+      const result = await handleListProfiles(nodeFileAdapter, req);
+      if (!result.success) {
+        console.error("[ipc] ADATA_LIST_PROFILES: error —", result.error, result.errorCode);
+      }
+      return result;
+    }
+  );
+
+  // ── Add profile ────────────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_ADD_PROFILE,
+    async (_event, req: AdataAddProfileRequest) => {
+      console.log("[ipc] ADATA_ADD_PROFILE: agentId →", req.agentId, "selector →", req.selector);
+      const result = await handleAddProfile(nodeFileAdapter, req);
+      if (!result.success) {
+        console.error("[ipc] ADATA_ADD_PROFILE: error —", result.error, result.errorCode);
+      }
+      return result;
+    }
+  );
+
+  // ── Update profile ─────────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_UPDATE_PROFILE,
+    async (_event, req: AdataUpdateProfileRequest) => {
+      console.log("[ipc] ADATA_UPDATE_PROFILE: agentId →", req.agentId, "profileId →", req.profileId);
+      const result = await handleUpdateProfile(nodeFileAdapter, req);
+      if (!result.success) {
+        console.error("[ipc] ADATA_UPDATE_PROFILE: error —", result.error, result.errorCode);
+      }
+      return result;
+    }
+  );
+
+  // ── Remove profile ─────────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_REMOVE_PROFILE,
+    async (_event, req: AdataRemoveProfileRequest) => {
+      console.log("[ipc] ADATA_REMOVE_PROFILE: agentId →", req.agentId, "profileId →", req.profileId);
+      const result = await handleRemoveProfile(nodeFileAdapter, req);
+      if (!result.success) {
+        console.error("[ipc] ADATA_REMOVE_PROFILE: error —", result.error, result.errorCode);
+      }
+      return result;
+    }
+  );
+
+  // ── Reorder profiles ───────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_REORDER_PROFILES,
+    async (_event, req: AdataReorderProfilesRequest) => {
+      console.log("[ipc] ADATA_REORDER_PROFILES: agentId →", req.agentId, "orderedIds →", req.orderedIds.length);
+      const result = await handleReorderProfiles(nodeFileAdapter, req);
+      if (!result.success) {
+        console.error("[ipc] ADATA_REORDER_PROFILES: error —", result.error, result.errorCode);
+      }
+      return result;
     }
   );
 }

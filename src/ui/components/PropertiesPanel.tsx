@@ -30,6 +30,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useAgentFlowStore } from "../store/agentFlowStore.ts";
 import { useProjectStore } from "../store/projectStore.ts";
 import type { LinkRuleType, DelegationType } from "../store/agentFlowStore.ts";
+import { AgentProfileModal } from "./AgentProfiling/AgentProfileModal.tsx";
 
 // ── Placeholder message map ────────────────────────────────────────────────
 
@@ -250,6 +251,9 @@ function AgentAdapterForm({ agentId }: AgentAdapterFormProps) {
         <OpenCodeConfigForm agentId={agentId} />
       )}
 
+      {/* ── Agent Profiles section (always visible once adapter is created) ── */}
+      <AgentProfilesSection agentId={agentId} />
+
       {/* ── Floating error toast ────────────────────────────────────────────── */}
       {showToast && (
         <div className="agent-graph-toast agent-graph-toast--error" role="alert">
@@ -262,6 +266,48 @@ function AgentAdapterForm({ agentId }: AgentAdapterFormProps) {
             ✕
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── AgentProfilesSection ───────────────────────────────────────────────────
+// Shown in the Properties Panel below the Model field.
+// Contains a "Manage Profiles" button that opens the AgentProfileModal.
+
+interface AgentProfilesSectionProps {
+  agentId: string;
+}
+
+function AgentProfilesSection({ agentId }: AgentProfilesSectionProps) {
+  const project = useProjectStore((s) => s.project);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  // Find agent name from the flow store for the modal subtitle
+  const agents = (useAgentFlowStore as typeof useAgentFlowStore)((s) => s.agents);
+  const agentName = agents.find((a) => a.id === agentId)?.name ?? agentId;
+
+  if (!project) return null;
+
+  return (
+    <div className="agent-profiles-section">
+      <div className="agent-adapter-form__section-heading">Agent Profiles</div>
+      <button
+        type="button"
+        className="btn btn--ghost agent-profiles-section__open-btn"
+        onClick={() => setModalOpen(true)}
+        aria-label="Manage agent profiles"
+      >
+        Manage Profiles
+      </button>
+
+      {modalOpen && (
+        <AgentProfileModal
+          agentId={agentId}
+          agentName={agentName}
+          projectDir={project.projectDir}
+          onClose={() => setModalOpen(false)}
+        />
       )}
     </div>
   );

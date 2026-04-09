@@ -65,6 +65,17 @@ const _stub: AgentsFlowBridge = {
   assetDelete: () => notAvailable("assetDelete"),
   assetImportFile: () => notAvailable("assetImportFile"),
   assetOpenMdDialog: () => Promise.resolve(null),
+  // Adapter / OpenCode (added in adapter feature)
+  adataGetAdapter: () => notAvailable("adataGetAdapter"),
+  adataSetAdapter: () => notAvailable("adataSetAdapter"),
+  adataGetOpenCodeConfig: () => notAvailable("adataGetOpenCodeConfig"),
+  adataSetOpenCodeConfig: () => notAvailable("adataSetOpenCodeConfig"),
+  // Agent Profiling (Phase 1 infrastructure)
+  adataListProfiles: () => notAvailable("adataListProfiles"),
+  adataAddProfile: () => notAvailable("adataAddProfile"),
+  adataUpdateProfile: () => notAvailable("adataUpdateProfile"),
+  adataRemoveProfile: () => notAvailable("adataRemoveProfile"),
+  adataReorderProfiles: () => notAvailable("adataReorderProfiles"),
 };
 
 function getBridge(): AgentsFlowBridge {
