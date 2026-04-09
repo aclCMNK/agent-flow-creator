@@ -1,0 +1,186 @@
+/* ═══════ Agent node link grip (botón de conexión entre nodos) ═══════ */
+.agent-node__link-grip {
+	position: absolute;
+	right: 6px;
+	top: 6px;
+	width: 28px;
+	height: 28px;
+	background: #5266ff;
+	/* fallback, azul primario */
+	border-radius: 50%;
+	box-shadow: 0 2px 6px rgba(50, 50, 70, 0.08);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #fff;
+	border: none;
+	transition: background 0.18s;
+	cursor: grab;
+	z-index: 2;
+}
+
+.agent-node__link-grip:hover,
+.agent-node__link-grip:focus {
+	background: #3544b1;
+	/* fallback hover */
+}
+
+.agent-node__link-grip:active {
+	cursor: grabbing;
+}
+
+.agent-node__link-grip svg {
+	width: 18px;
+	height: 18px;
+	pointer-events: none;
+}
+
+/* ═══════ OpenCode Adapter Config fields (Provider/Model) ═══════ */
+.opencode-config-form__provider,
+.opencode-config-form__model-input {
+	width: 100%;
+	background: #101223;
+	/* fallback bg */
+	border: 1px solid #292e44;
+	/* fallback border */
+	border-radius: 8px;
+	/* fallback radio */
+	color: #e2e8f0;
+	/* texto claro fallback */
+	font-family: 'Inter', 'sans-serif';
+	/* por si acaso */
+	font-size: 0.95em;
+	padding: 8px 12px;
+	margin-bottom: 8px;
+	transition: border-color 0.18s;
+	box-sizing: border-box;
+}
+
+.opencode-config-form__provider:focus,
+.opencode-config-form__model-input:focus {
+	border-color: #5266ff;
+	box-shadow: 0 0 0 1.5px rgba(99, 102, 241, 0.10);
+}
+
+/* === Property Panel: Sección/Encabezado === */
+.agent-adapter-form__section-heading {
+  font-size: 1.11em;
+  font-weight: 700;
+  color: #71909f;
+  letter-spacing: 0.02em;
+  margin-top: 12px;
+  margin-bottom: 9px;
+  position: relative;
+  text-shadow: none;
+  text-transform: none;
+  display: block;
+  text-align: center;
+}
+.agent-adapter-form__section-heading::after {
+  content: none;
+}
+.agent-adapter-form__section-heading:first-child {
+  margin-top: 0;
+}
+.agent-adapter-form__field {
+  margin-bottom: 10px; /* menos separación, más compacto */
+}
+
+/* Label para inputs/selects */
+.agent-adapter-form__label {
+  display: block;
+  font-size: 0.97em;
+  color: #a4acc3;
+  font-weight: 500;
+  margin-bottom: 4px;
+  letter-spacing: 0.01em;
+}
+
+/* Propiedades/Inputs estilo editor */
+.form-field__select,
+.opencode-config-form__model-input {
+  background: #191b28;
+  border: 1px solid #242942;
+  color: #f7f9fb;
+  border-radius: 6px;
+  padding: 7px 11px 7px 11px;
+  font-size: 0.98em;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.form-field__select:focus,
+.opencode-config-form__model-input:focus {
+  border-color: #5ea8ff;
+  box-shadow: 0 0 0 1.5px rgba(82, 102, 255, 0.09);
+  outline: none;
+}
+
+/* Botón Create Adapter compacto y coherente */
+.agent-adapter-form__create-btn {
+  background: #5266ff;
+  color: #fff;
+  border-radius: 6px;
+  border: none;
+  padding: 8px 16px;
+  font-size: 0.99em;
+  font-family: inherit;
+  font-weight: 600;
+  margin-bottom: 11px;
+  margin-top: 2px;
+  transition: background 0.19s, box-shadow 0.14s, transform 0.11s;
+  box-shadow: 0 1px 6px 0 rgba(50, 50, 100, 0.09);
+  cursor: pointer;
+  width: 100%;
+  display: block;
+  box-sizing: border-box;
+}
+.agent-adapter-form__create-btn:active {
+  transform: scale(0.98);
+}
+.agent-adapter-form__create-btn:focus,
+.agent-adapter-form__create-btn:hover {
+  background: #314cdf;
+}
+
+.agent-adapter-form__inline-error {
+  color: #ef5350;
+  font-size: 0.93em;
+  margin: 3px 0 6px 2px;
+  line-height: 1.21;
+}
+
+.opencode-config-form__model-info {
+  color: #939cc5;
+  font-size: 0.89em;
+  margin-top: 2px;
+  margin-bottom: 7px;
+  display: block;
+}
+
+.opencode-config-form__model-input::placeholder {
+  color: #adb3cf !important;
+  opacity: 1;
+  font-size: 0.96em;
+}
+
+/* Panel: margen interior general para que nada quede pegado */
+.agent-adapter-form,
+.opencode-config-form {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+/* 1. Select e input que estén solos: full width asegurado */
+.agent-adapter-form__field > .form-field__select,
+.agent-adapter-form__field > .opencode-config-form__model-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: block;
+}
+
+/* 2. Separador para grupo OpenCode */
+.opencode-config-form {
+  border-top: 1px solid #242942;
+  margin-top: 14px;
+  padding-top: 13px;
+}

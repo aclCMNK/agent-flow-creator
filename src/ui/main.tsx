@@ -14,6 +14,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import "./styles/app.css";
+import "./styles/app2.css";
 
 // ── Monaco Editor: resolve workers from local /vs/ copy (not CDN) ─────────
 // @monaco-editor/loader uses the AMD require system (vs/loader.js).
