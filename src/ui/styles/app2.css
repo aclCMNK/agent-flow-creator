@@ -1,68 +1,56 @@
 /* ═══════ Agent node link grip (botón de conexión entre nodos) ═══════ */
-.agent-node__link-grip {
-	position: absolute;
-	right: 6px;
-	top: 6px;
-	width: 28px;
-	height: 28px;
-	background: #5266ff;
-	/* fallback, azul primario */
-	border-radius: 50%;
-	box-shadow: 0 2px 6px rgba(50, 50, 70, 0.08);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	color: #fff;
-	border: none;
-	transition: background 0.18s;
-	cursor: grab;
-	z-index: 2;
+.flow-canvas__node-grip {
+  position: absolute;
+  left: 50%;
+  bottom: -19px;  /* La mitad de height para que quede justo tocando/bordeando el nodo */
+  transform: translateX(-50%);
+  z-index: 10;
+  width: 38px;
+  height: 38px;
+  background: #232d3a;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px 0 rgba(60,80,140,0.09);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  border: 2.5px solid rgba(99,102,241,0.09);
+  transition: box-shadow 0.18s, border-color 0.16s, background 0.18s;
+  padding: 0;
 }
 
-.agent-node__link-grip:hover,
-.agent-node__link-grip:focus {
-	background: #3544b1;
-	/* fallback hover */
+.flow-canvas__node-grip svg {
+  width: 23px;
+  height: 23px;
+  color: #7cc9ff;
+  display: block;
+  pointer-events: none;
+  transition: color 0.15s, filter 0.14s;
 }
 
-.agent-node__link-grip:active {
-	cursor: grabbing;
+.flow-canvas__node-grip:hover,
+.flow-canvas__node-grip:focus {
+  background: #182547;
+  border-color: #89edff;
+  box-shadow: 0 0 0 5px rgba(90,190,255,0.13), 0 2px 18px 0 rgba(60,80,140,0.18);
 }
 
-.agent-node__link-grip svg {
-	width: 18px;
-	height: 18px;
-	pointer-events: none;
+.flow-canvas__node-grip:hover svg,
+.flow-canvas__node-grip:focus svg {
+  color: #abecff;
+  filter: drop-shadow(0 0 6px #3be7ff88);
 }
 
-/* ═══════ OpenCode Adapter Config fields (Provider/Model) ═══════ */
-.opencode-config-form__provider,
-.opencode-config-form__model-input {
-	width: 100%;
-	background: #101223;
-	/* fallback bg */
-	border: 1px solid #292e44;
-	/* fallback border */
-	border-radius: 8px;
-	/* fallback radio */
-	color: #e2e8f0;
-	/* texto claro fallback */
-	font-family: 'Inter', 'sans-serif';
-	/* por si acaso */
-	font-size: 0.95em;
-	padding: 8px 12px;
-	margin-bottom: 8px;
-	transition: border-color 0.18s;
-	box-sizing: border-box;
+.flow-canvas__node-grip:active {
+  cursor: grabbing;
 }
 
-.opencode-config-form__provider:focus,
-.opencode-config-form__model-input:focus {
-	border-color: #5266ff;
-	box-shadow: 0 0 0 1.5px rgba(99, 102, 241, 0.10);
+.flow-canvas__node-grip:focus-visible {
+  outline: 2px solid #4ddcfa;
+  outline-offset: 2px;
 }
 
-/* === Property Panel: Sección/Encabezado === */
+/* ==== resto de estilos previos del panel y forms ==== */
 .agent-adapter-form__section-heading {
   font-size: 1.11em;
   font-weight: 700;
