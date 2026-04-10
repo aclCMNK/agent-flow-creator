@@ -75,6 +75,10 @@ import {
 } from "./profile-handlers.ts";
 import { nodeFileAdapter } from "../storage/node-file-adapter.ts";
 import { migrateProjectProfiles } from "../storage/migrate-profiles.ts";
+import {
+  getOpenCodeConfigFromAdata,
+  OPENCODE_CONFIG_TEMPERATURE_DEFAULT,
+} from "./opencode-config-handlers.ts";
 
 // ── Recents storage ────────────────────────────────────────────────────────
 
@@ -960,13 +964,8 @@ export function registerIpcHandlers(): void {
           return { success: true, config: null };
         }
         const adata = JSON.parse(raw) as Record<string, unknown>;
-        const opencode = adata.opencode as Record<string, unknown> | undefined;
-        if (!opencode || typeof opencode !== "object") {
-          return { success: true, config: null };
-        }
-        const provider = typeof opencode.provider === "string" ? opencode.provider : "";
-        const model = typeof opencode.model === "string" ? opencode.model : "";
-        return { success: true, config: { provider, model } };
+        const config = getOpenCodeConfigFromAdata(adata);
+        return { success: true, config };
       } catch (err) {
         return { success: false, config: null, error: err instanceof Error ? err.message : String(err) };
       }
@@ -990,11 +989,18 @@ export function registerIpcHandlers(): void {
         }
 
         // Write opencode config at the top-level 'opencode' key — preserve everything else
+        // temperature is always stored; default to 0.05 if caller omits it
+        const temperature =
+          typeof req.config.temperature === "number" && isFinite(req.config.temperature)
+            ? req.config.temperature
+            : OPENCODE_CONFIG_TEMPERATURE_DEFAULT;
+
         const updated: Record<string, unknown> = {
           ...existing,
           opencode: {
             provider: req.config.provider,
             model: req.config.model,
+            temperature,
           },
           updatedAt: new Date().toISOString(),
         };

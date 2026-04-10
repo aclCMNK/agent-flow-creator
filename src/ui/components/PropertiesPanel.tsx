@@ -26,11 +26,10 @@
  * never blocks canvas panning/zooming. pointer-events are managed carefully.
  */
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useAgentFlowStore } from "../store/agentFlowStore.ts";
 import { useProjectStore } from "../store/projectStore.ts";
 import type { LinkRuleType, DelegationType } from "../store/agentFlowStore.ts";
-import { AgentProfileModal } from "./AgentProfiling/AgentProfileModal.tsx";
 
 // ── Placeholder message map ────────────────────────────────────────────────
 
@@ -63,6 +62,28 @@ const OPENCODE_PROVIDERS: string[] = [
   "OpenCode-Zen",
   "OpenCode-Go",
 ];
+
+// ── Temperature helpers ────────────────────────────────────────────────────
+// Temperature is stored as a float (0.0..1.0) in .adata[opencode.temperature].
+// The UI field is a number input (type="number", min=0.0, max=1.0, step=0.01).
+
+/** Default temperature as float (0.5 = balanced value) */
+export const OPENCODE_TEMPERATURE_DEFAULT = 0.5;
+
+/** Help text displayed below the temperature input field */
+export const OPENCODE_TEMPERATURE_HELP_TEXT =
+  "0 = less randomness — 1.0 = more randomness";
+
+/**
+ * Returns true if the temperature value is a finite number in [0.0, 1.0].
+ * Returns false for NaN, Infinity, values below 0, or values above 1.
+ * @example isValidTemperature(0.5) → true
+ * @example isValidTemperature(NaN) → false
+ * @example isValidTemperature(1.01) → false
+ */
+export function isValidTemperature(value: number): boolean {
+  return typeof value === "number" && isFinite(value) && value >= 0.0 && value <= 1.0;
+}
 
 function AgentAdapterForm({ agentId }: AgentAdapterFormProps) {
   const project = useProjectStore((s) => s.project);
@@ -254,6 +275,11 @@ function AgentAdapterForm({ agentId }: AgentAdapterFormProps) {
       {/* ── Agent Profiles section (always visible once adapter is created) ── */}
       <AgentProfilesSection agentId={agentId} />
 
+      {/* ── Temperature field (opencode only, directly below profiles) ────── */}
+      {createdAdapter === "opencode" && (
+        <TemperatureField agentId={agentId} />
+      )}
+
       {/* ── Floating error toast ────────────────────────────────────────────── */}
       {showToast && (
         <div className="agent-graph-toast agent-graph-toast--error" role="alert">
@@ -273,7 +299,9 @@ function AgentAdapterForm({ agentId }: AgentAdapterFormProps) {
 
 // ── AgentProfilesSection ───────────────────────────────────────────────────
 // Shown in the Properties Panel below the Model field.
-// Contains a "Manage Profiles" button that opens the AgentProfileModal.
+// Contains a "Manage Profiles" button that opens the AgentProfileModal portal.
+// The modal itself is mounted at the App root level via React Portal so it
+// escapes the PropertiesPanel stacking context and appears above all overlays.
 
 interface AgentProfilesSectionProps {
   agentId: string;
@@ -281,7 +309,7 @@ interface AgentProfilesSectionProps {
 
 function AgentProfilesSection({ agentId }: AgentProfilesSectionProps) {
   const project = useProjectStore((s) => s.project);
-  const [modalOpen, setModalOpen] = useState(false);
+  const openProfileModal = useAgentFlowStore((s) => s.openProfileModal);
 
   // Find agent name from the flow store for the modal subtitle
   const agents = (useAgentFlowStore as typeof useAgentFlowStore)((s) => s.agents);
@@ -295,20 +323,176 @@ function AgentProfilesSection({ agentId }: AgentProfilesSectionProps) {
       <button
         type="button"
         className="btn btn--ghost agent-profiles-section__open-btn"
-        onClick={() => setModalOpen(true)}
+        onClick={() =>
+          openProfileModal({
+            agentId,
+            agentName,
+            projectDir: project.projectDir,
+          })
+        }
         aria-label="Manage agent profiles"
       >
         Manage Profiles
       </button>
+    </div>
+  );
+}
 
-      {modalOpen && (
-        <AgentProfileModal
-          agentId={agentId}
-          agentName={agentName}
-          projectDir={project.projectDir}
-          onClose={() => setModalOpen(false)}
+// ── TemperatureField ───────────────────────────────────────────────────────
+// Rendered in the OpenCode section, directly below the Agent Profiles section.
+// Allows the user to set the temperature as a float (0.0..1.0) via a number input.
+// Shows help text, validates that the value is required and within [0.0, 1.0].
+
+interface TemperatureFieldProps {
+  agentId: string;
+}
+
+function TemperatureField({ agentId }: TemperatureFieldProps) {
+  const project = useProjectStore((s) => s.project);
+
+  // Display as string to allow partial typing (e.g. "0."); persist as float
+  const [rawValue, setRawValue] = useState<string>(String(OPENCODE_TEMPERATURE_DEFAULT));
+  const [error, setError] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Load existing temperature from .adata ─────────────────────────────
+  useEffect(() => {
+    if (!project) return;
+
+    setIsLoaded(false);
+    setRawValue(String(OPENCODE_TEMPERATURE_DEFAULT));
+    setError(null);
+
+    window.agentsFlow
+      .adataGetOpenCodeConfig({ projectDir: project.projectDir, agentId })
+      .then((result) => {
+        if (result.success && result.config) {
+          const temp = result.config.temperature;
+          setRawValue(
+            isValidTemperature(temp) ? String(temp) : String(OPENCODE_TEMPERATURE_DEFAULT)
+          );
+        }
+        setIsLoaded(true);
+      })
+      .catch(() => {
+        setIsLoaded(true);
+      });
+  }, [agentId, project?.projectDir]);
+
+  // ── Persist temperature to .adata ─────────────────────────────────────
+  function persistTemperature(temperature: number) {
+    if (!project) return;
+    // Read current provider+model to include in write
+    window.agentsFlow
+      .adataGetOpenCodeConfig({ projectDir: project.projectDir, agentId })
+      .then((result) => {
+        const currentProvider =
+          result.success && result.config ? result.config.provider : (OPENCODE_PROVIDERS[0] ?? "");
+        const currentModel =
+          result.success && result.config ? result.config.model : "";
+        return window.agentsFlow.adataSetOpenCodeConfig({
+          projectDir: project.projectDir,
+          agentId,
+          config: { provider: currentProvider, model: currentModel, temperature },
+        });
+      })
+      .catch(() => {
+        // Persist failure is silent — non-blocking
+      });
+  }
+
+  // ── Input change handler ───────────────────────────────────────────────
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const strVal = e.target.value;
+    setRawValue(strVal);
+    setError(null);
+
+    const numVal = parseFloat(strVal);
+
+    // Validate: required — empty string or NaN means invalid
+    if (strVal.trim() === "" || isNaN(numVal)) {
+      setError("Temperature is required.");
+      return;
+    }
+
+    // Validate: must be in range [0.0, 1.0]
+    if (!isValidTemperature(numVal)) {
+      setError("Temperature must be between 0.0 and 1.0.");
+      return;
+    }
+
+    // Valid — debounced save
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      persistTemperature(numVal);
+    }, 400);
+  }
+
+  // ── Blur handler: enforce value or restore default ─────────────────────
+  function handleBlur() {
+    const numVal = parseFloat(rawValue);
+    if (rawValue.trim() === "" || isNaN(numVal) || !isValidTemperature(numVal)) {
+      // Restore default on invalid/empty blur
+      setRawValue(String(OPENCODE_TEMPERATURE_DEFAULT));
+      setError(null);
+      persistTemperature(OPENCODE_TEMPERATURE_DEFAULT);
+    }
+  }
+
+  if (!isLoaded) return null;
+
+  return (
+    <div className="opencode-temperature-section">
+      <div className="agent-adapter-form__section-heading">OpenCode Settings</div>
+
+      {/* ── Temperature number input ──────────────────────────────────── */}
+      <div className="agent-adapter-form__field">
+        <label
+          className="agent-adapter-form__label"
+          htmlFor="opencode-temperature-input"
+        >
+          Temperature
+        </label>
+        <input
+          id="opencode-temperature-input"
+          type="number"
+          className={[
+            "form-field__input",
+            "opencode-config-form__temperature-input",
+            error ? "opencode-config-form__temperature-input--error" : "",
+          ].filter(Boolean).join(" ")}
+          value={rawValue}
+          min={0.0}
+          max={1.0}
+          step={0.01}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          aria-label="OpenCode temperature"
+          aria-describedby="opencode-temperature-help"
+          aria-invalid={error !== null}
+          autoComplete="off"
+          required
         />
-      )}
+        {/* Validation error */}
+        {error && (
+          <span
+            className="agent-adapter-form__inline-error"
+            role="alert"
+            id="opencode-temperature-error"
+          >
+            {error}
+          </span>
+        )}
+        {/* Help text */}
+        <span
+          className="opencode-config-form__temperature-help"
+          id="opencode-temperature-help"
+        >
+          {OPENCODE_TEMPERATURE_HELP_TEXT}
+        </span>
+      </div>
     </div>
   );
 }
@@ -331,7 +515,7 @@ function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
 
   // Debounce timer for model field auto-save
   const modelSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track last persisted values to avoid redundant writes
+  // Track last persisted provider+model to avoid redundant writes
   const lastPersistedRef = useRef<{ provider: string; model: string } | null>(null);
 
   // ── Load existing config from .adata ────────────────────────────────────
@@ -361,7 +545,7 @@ function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
       });
   }, [agentId, project?.projectDir]);
 
-  // ── Persist helper ───────────────────────────────────────────────────────
+  // ── Persist helper (provider + model only; temperature handled separately) ─
   const persist = useCallback(
     (nextProvider: string, nextModel: string) => {
       if (!project) return;
@@ -369,11 +553,19 @@ function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
       const last = lastPersistedRef.current;
       if (last && last.provider === nextProvider && last.model === nextModel) return;
       lastPersistedRef.current = { provider: nextProvider, model: nextModel };
+      // Read current temperature from store to include in write
       window.agentsFlow
-        .adataSetOpenCodeConfig({
-          projectDir: project.projectDir,
-          agentId,
-          config: { provider: nextProvider, model: nextModel },
+        .adataGetOpenCodeConfig({ projectDir: project.projectDir, agentId })
+        .then((result) => {
+          const currentTemp =
+            result.success && result.config && isValidTemperature(result.config.temperature)
+              ? result.config.temperature
+              : OPENCODE_TEMPERATURE_DEFAULT;
+          return window.agentsFlow.adataSetOpenCodeConfig({
+            projectDir: project.projectDir,
+            agentId,
+            config: { provider: nextProvider, model: nextModel, temperature: currentTemp },
+          });
         })
         .catch(() => {
           // Persist failure is silent — non-blocking

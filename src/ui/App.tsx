@@ -33,6 +33,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useProjectStore } from "./store/projectStore.ts";
 import { useAgentFlowStore } from "./store/agentFlowStore.ts";
 import { ProjectBrowser } from "./components/ProjectBrowser.tsx";
@@ -44,6 +45,7 @@ import { AgentTreeItem } from "./components/AgentTreeItem.tsx";
 import { AgentEditModal } from "./components/AgentEditModal.tsx";
 import { AssetPanel } from "./components/AssetPanel/index.ts";
 import { PropertiesPanel } from "./components/PropertiesPanel.tsx";
+import { AgentProfileModal } from "./components/AgentProfiling/AgentProfileModal.tsx";
 
 // ── Load Toast ─────────────────────────────────────────────────────────────
 // Shown after a project load operation completes (success or error).
@@ -361,6 +363,12 @@ export function App() {
   const loadFromProject = useAgentFlowStore((s) => s.loadFromProject);
   const resetFlow       = useAgentFlowStore((s) => s.resetFlow);
 
+  // ── Global Agent Profile modal portal ───────────────────────────────────
+  // Mounted directly under document.body so it escapes every stacking context
+  // (properties panel, minimap, zoom controls, etc.) and appears topmost.
+  const profileModalTarget = useAgentFlowStore((s) => s.profileModalTarget);
+  const closeProfileModal  = useAgentFlowStore((s) => s.closeProfileModal);
+
   // ── Toast state (project load success / error) ───────────────────────────
   const [loadToast, setLoadToast] = useState<LoadToast | null>(null);
 
@@ -440,6 +448,20 @@ export function App() {
       {loadToast && (
         <LoadToast toast={loadToast} onDismiss={() => setLoadToast(null)} />
       )}
+
+      {/* ── Agent Profile modal — global portal, above ALL overlays ─────── */}
+      {/* Mounted directly on document.body via createPortal so it escapes  */}
+      {/* the properties-panel stacking context (z-index hierarchy).        */}
+      {profileModalTarget !== null &&
+        createPortal(
+          <AgentProfileModal
+            agentId={profileModalTarget.agentId}
+            agentName={profileModalTarget.agentName}
+            projectDir={profileModalTarget.projectDir}
+            onClose={closeProfileModal}
+          />,
+          document.body
+        )}
     </div>
   );
 }

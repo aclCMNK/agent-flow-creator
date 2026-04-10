@@ -123,6 +123,19 @@ export interface AgentEditFields {
   hidden?: boolean;
 }
 
+/**
+ * Payload for the global agent profile modal.
+ * When non-null, the portal modal is shown above all other overlays.
+ */
+export interface ProfileModalTarget {
+  /** The agent's UUID */
+  agentId: string;
+  /** Human-readable name for the modal subtitle */
+  agentName: string;
+  /** Absolute path to the project root */
+  projectDir: string;
+}
+
 /** Partial fields that can be updated on a link's rule */
 export interface LinkRuleFields {
   ruleType?: LinkRuleType;
@@ -174,6 +187,12 @@ export interface AgentFlowState {
    * Whether a graph save operation is in progress.
    */
   isSavingGraph: boolean;
+  /**
+   * When non-null, the global Agent Profile modal portal is shown above all overlays.
+   * Contains the agent data needed to render the modal without prop-drilling through
+   * the PropertiesPanel subtree.
+   */
+  profileModalTarget: ProfileModalTarget | null;
 }
 
 /** Actions for the flow store */
@@ -205,6 +224,14 @@ export interface AgentFlowActions {
   openEditModal(id: string): void;
   /** Close the edit modal without saving */
   closeEditModal(): void;
+  /**
+   * Open the global Agent Profile modal portal.
+   * Stores the target agent's data in the store so the portal (rendered in App)
+   * can read it without prop-drilling through the PropertiesPanel tree.
+   */
+  openProfileModal(target: ProfileModalTarget): void;
+  /** Close the global Agent Profile modal portal */
+  closeProfileModal(): void;
   /**
    * Add a directed link from one agent to another (center-to-center).
    * No-ops if fromAgentId === toAgentId or if an identical link already exists.
@@ -280,6 +307,7 @@ const initialState: AgentFlowState = {
   selectedNodeId: null,
   isDirty: false,
   isSavingGraph: false,
+  profileModalTarget: null,
 };
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -377,6 +405,14 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
 
   closeEditModal() {
     set({ editingAgentId: null });
+  },
+
+  openProfileModal(target) {
+    set({ profileModalTarget: target });
+  },
+
+  closeProfileModal() {
+    set({ profileModalTarget: null });
   },
 
   addLink(fromAgentId, toAgentId) {
@@ -480,6 +516,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       selectionContext: "none",
       isDirty: false,
       isSavingGraph: false,
+      profileModalTarget: null,
     });
   },
 
@@ -535,6 +572,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       selectionContext: "none",
       isDirty: false,
       isSavingGraph: false,
+      profileModalTarget: null,
     });
   },
 }));

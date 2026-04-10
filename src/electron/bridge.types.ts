@@ -458,6 +458,12 @@ export interface OpenCodeConfig {
   provider: string;
   /** The model identifier string */
   model: string;
+  /**
+   * Sampling temperature as a float in the range [0.0, 1.0].
+   * Maps to a UI percentage (0–100); 0.05 = 5% is the default.
+   * Always required — never null or undefined.
+   */
+  temperature: number;
 }
 
 /**
