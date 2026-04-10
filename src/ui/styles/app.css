@@ -5080,14 +5080,6 @@ button:disabled {
 	gap: 12px;
 }
 
-.permissions-modal__toolbar {
-	padding-top: 16px;
-}
-
-.permissions-modal__add-tool-btn {
-	font-size: 0.875rem;
-}
-
 .permissions-modal__empty {
 	font-size: 0.85rem;
 	color: var(--color-text-muted);
@@ -5107,9 +5099,105 @@ button:disabled {
 	padding: 8px 0;
 }
 
-/* ── Tool block ───────────────────────────────────────────────────────────── */
+/* ── Toolbar ──────────────────────────────────────────────────────────────── */
 
-.permissions-modal__tool-block {
+.permissions-modal__toolbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 16px;
+	padding-bottom: 4px;
+}
+
+/* "Add permission" — primary action, stands out */
+.permissions-modal__add-perm-btn {
+	font-size: 0.82rem;
+	padding: 5px 12px;
+	background: var(--color-surface-2) !important;
+	border-color: var(--color-primary) !important;
+	color: var(--color-primary) !important;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+}
+
+.permissions-modal__add-perm-btn:hover:not(:disabled) {
+	background: rgba(99, 102, 241, 0.12) !important;
+	color: var(--color-primary) !important;
+}
+
+/* "Add group" — secondary action, more subdued */
+.permissions-modal__add-group-btn {
+	font-size: 0.82rem;
+	padding: 5px 12px;
+	background: var(--color-surface-2) !important;
+	border-color: var(--color-border) !important;
+	color: var(--color-text-muted) !important;
+}
+
+.permissions-modal__add-group-btn:hover:not(:disabled) {
+	background: var(--color-border) !important;
+	color: var(--color-text) !important;
+}
+
+/* ── Ungrouped permissions section ────────────────────────────────────────── */
+
+.permissions-modal__section {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.permissions-modal__section-heading {
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--color-text-muted);
+	padding-bottom: 6px;
+	border-bottom: 1px solid var(--color-border);
+	margin-bottom: 4px;
+}
+
+/* ── Permission rows (ungrouped + inside groups) ──────────────────────────── */
+
+.permissions-modal__perm-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* Indented permission rows inside a group */
+.permissions-modal__perm-row--indented {
+	padding-left: 4px;
+}
+
+.permissions-modal__perm-name-input {
+	flex: 1 1 140px;
+	min-width: 0;
+}
+
+.permissions-modal__perm-value-select {
+	flex: 0 0 90px;
+	width: 90px;
+}
+
+.permissions-modal__remove-perm-btn {
+	flex-shrink: 0;
+	padding: 3px 7px;
+	font-size: 0.78rem;
+	line-height: 1;
+	color: var(--color-text-muted);
+}
+
+.permissions-modal__remove-perm-btn:hover:not(:disabled) {
+	color: var(--color-error, #f87171);
+	background: var(--color-error-bg) !important;
+}
+
+/* ── Permission group block ───────────────────────────────────────────────── */
+
+.permissions-modal__group-block {
 	background: var(--color-surface-2);
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius-md);
@@ -5119,19 +5207,19 @@ button:disabled {
 	gap: 8px;
 }
 
-.permissions-modal__tool-header {
+.permissions-modal__group-header {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 }
 
-.permissions-modal__tool-name-input {
+.permissions-modal__group-name-input {
 	flex: 1 1 auto;
 	min-width: 0;
 	font-weight: 600;
 }
 
-.permissions-modal__remove-tool-btn {
+.permissions-modal__remove-group-btn {
 	flex-shrink: 0;
 	padding: 3px 8px;
 	font-size: 0.78rem;
@@ -5139,52 +5227,35 @@ button:disabled {
 	color: var(--color-text-muted);
 }
 
-.permissions-modal__remove-tool-btn:hover {
+.permissions-modal__remove-group-btn:hover:not(:disabled) {
 	color: var(--color-error, #f87171);
+	background: var(--color-error-bg) !important;
 }
 
-/* ── Rules list ───────────────────────────────────────────────────────────── */
-
-.permissions-modal__rules {
+/* Permissions list inside a group */
+.permissions-modal__group-perms {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
 	padding-left: 4px;
+	border-left: 2px solid var(--color-border);
+	margin-left: 2px;
+	padding-top: 4px;
 }
 
-.permissions-modal__rule-row {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 6px;
-}
-
-.permissions-modal__rule-name-input {
-	flex: 1 1 140px;
-	min-width: 0;
-}
-
-.permissions-modal__rule-value-select {
-	flex: 0 0 90px;
-	width: 90px;
-}
-
-.permissions-modal__remove-rule-btn {
-	flex-shrink: 0;
-	padding: 3px 7px;
+/* "Add permission" inside a group — smaller, inline */
+.permissions-modal__add-group-perm-btn {
 	font-size: 0.78rem;
-	line-height: 1;
-	color: var(--color-text-muted);
-}
-
-.permissions-modal__remove-rule-btn:hover {
-	color: var(--color-error, #f87171);
-}
-
-.permissions-modal__add-rule-btn {
-	font-size: 0.8rem;
+	padding: 3px 10px;
 	align-self: flex-start;
-	padding: 4px 10px;
+	color: var(--color-text-dim) !important;
+	border-color: transparent !important;
+}
+
+.permissions-modal__add-group-perm-btn:hover:not(:disabled) {
+	color: var(--color-primary) !important;
+	background: rgba(99, 102, 241, 0.08) !important;
+	border-color: transparent !important;
 }
 
 /* ── Validation errors ────────────────────────────────────────────────────── */
@@ -5201,8 +5272,8 @@ button:disabled {
 	margin-top: 2px;
 }
 
-.permissions-modal__rule-error {
-	/* Rule error spans full row width when wrapped */
+.permissions-modal__perm-error {
+	/* Perm error spans full row width when wrapped */
 	flex-basis: 100%;
 }
 
@@ -5220,6 +5291,6 @@ button:disabled {
 	min-width: 80px;
 }
 
-.permissions-modal__cancel-btn {
+.permissions-modal__close-btn {
 	min-width: 70px;
 }
