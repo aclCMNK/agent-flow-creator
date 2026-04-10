@@ -62,7 +62,7 @@ bun install
 bun run dev
 ```
 
-Abre [http://localhost:5173](http://localhost:5173) en el navegador.
+Ejecuta `bun run electron` para lanzar AgentsFlow (aplicación de escritorio en Electron). No se soporta ejecución directa en el navegador.
 
 ### 4. Verificar que todo funciona
 
