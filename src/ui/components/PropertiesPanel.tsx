@@ -86,6 +86,68 @@ export function isValidTemperature(value: number): boolean {
   return typeof value === "number" && isFinite(value) && value >= 0.0 && value <= 1.0;
 }
 
+// ── Hidden field helpers ───────────────────────────────────────────────────
+// Hidden is stored as a boolean in .adata[opencode.hidden].
+// The toggle is only visible when the agent is a Sub-Agent.
+
+/** Default hidden value */
+export const OPENCODE_HIDDEN_DEFAULT = false;
+
+/** Tooltip text shown when the ? button is clicked */
+export const OPENCODE_HIDDEN_TOOLTIP_TEXT =
+  "When enabled, this sub-agent will not appear in the @ autocomplete menu for other agents.";
+
+/** Label shown when hidden is true */
+export const OPENCODE_HIDDEN_LABEL_TRUE = "Hidden";
+
+/** Label shown when hidden is false */
+export const OPENCODE_HIDDEN_LABEL_FALSE = "Visible";
+
+// ── Steps field helpers ────────────────────────────────────────────────────
+// Steps is stored as a number in .adata[opencode.steps].
+// Optional integer, min=7, max=100, default=7.
+
+/** Default steps value */
+export const OPENCODE_STEPS_DEFAULT = 7;
+
+/** Minimum steps value */
+export const OPENCODE_STEPS_MIN = 7;
+
+/** Maximum steps value */
+export const OPENCODE_STEPS_MAX = 100;
+
+/**
+ * Returns true if the steps value is a valid integer in [STEPS_MIN, STEPS_MAX],
+ * or if the field is empty (optional).
+ */
+export function isValidSteps(value: number | null): boolean {
+  if (value === null) return true;
+  return (
+    typeof value === "number" &&
+    isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= OPENCODE_STEPS_MIN &&
+    value <= OPENCODE_STEPS_MAX
+  );
+}
+
+// ── Color field helpers ────────────────────────────────────────────────────
+// Color is stored as a hex string in .adata[opencode.color].
+// Required, default "#ffffff".
+
+/** Default color value */
+export const OPENCODE_COLOR_DEFAULT = "#ffffff";
+
+/** Regex for valid hex color strings: #RRGGBB or #RGB */
+export const OPENCODE_COLOR_HEX_REGEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * Returns true if the value is a valid hex color string (#RGB or #RRGGBB).
+ */
+export function isValidColor(value: string): boolean {
+  return typeof value === "string" && OPENCODE_COLOR_HEX_REGEX.test(value);
+}
+
 function AgentAdapterForm({ agentId }: AgentAdapterFormProps) {
   const project = useProjectStore((s) => s.project);
 
@@ -395,28 +457,70 @@ interface TemperatureFieldProps {
 function TemperatureField({ agentId }: TemperatureFieldProps) {
   const project = useProjectStore((s) => s.project);
 
+  // Determine agent type for conditional Hidden toggle visibility
+  const agents = useAgentFlowStore((s) => s.agents);
+  const agentType = agents.find((a) => a.id === agentId)?.type ?? "Agent";
+  const isSubagent = agentType === "Sub-Agent";
+
+  // ── Temperature state ─────────────────────────────────────────────────
   // Display as string to allow partial typing (e.g. "0."); persist as float
   const [rawValue, setRawValue] = useState<string>(String(OPENCODE_TEMPERATURE_DEFAULT));
-  const [error, setError] = useState<string | null>(null);
+  const [temperatureError, setTemperatureError] = useState<string | null>(null);
+
+  // ── Hidden state ──────────────────────────────────────────────────────
+  const [hidden, setHidden] = useState<boolean>(OPENCODE_HIDDEN_DEFAULT);
+  const [showHiddenTooltip, setShowHiddenTooltip] = useState(false);
+
+  // ── Steps state ───────────────────────────────────────────────────────
+  // Display as string to allow partial typing; null means unset (use default)
+  const [rawSteps, setRawSteps] = useState<string>(String(OPENCODE_STEPS_DEFAULT));
+  const [stepsError, setStepsError] = useState<string | null>(null);
+
+  // ── Color state ───────────────────────────────────────────────────────
+  const [colorText, setColorText] = useState<string>(OPENCODE_COLOR_DEFAULT);
+  const [colorError, setColorError] = useState<string | null>(null);
+
+  // ── Loaded state ──────────────────────────────────────────────────────
   const [isLoaded, setIsLoaded] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stepsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Load existing temperature from .adata ─────────────────────────────
+  // ── Load existing config from .adata ──────────────────────────────────
   useEffect(() => {
     if (!project) return;
 
     setIsLoaded(false);
     setRawValue(String(OPENCODE_TEMPERATURE_DEFAULT));
-    setError(null);
+    setTemperatureError(null);
+    setHidden(OPENCODE_HIDDEN_DEFAULT);
+    setShowHiddenTooltip(false);
+    setRawSteps(String(OPENCODE_STEPS_DEFAULT));
+    setStepsError(null);
+    setColorText(OPENCODE_COLOR_DEFAULT);
+    setColorError(null);
 
     window.agentsFlow
       .adataGetOpenCodeConfig({ projectDir: project.projectDir, agentId })
       .then((result) => {
         if (result.success && result.config) {
-          const temp = result.config.temperature;
+          const cfg = result.config;
+          // Temperature
           setRawValue(
-            isValidTemperature(temp) ? String(temp) : String(OPENCODE_TEMPERATURE_DEFAULT)
+            isValidTemperature(cfg.temperature)
+              ? String(cfg.temperature)
+              : String(OPENCODE_TEMPERATURE_DEFAULT)
+          );
+          // Hidden
+          setHidden(typeof cfg.hidden === "boolean" ? cfg.hidden : OPENCODE_HIDDEN_DEFAULT);
+          // Steps
+          const steps = cfg.steps;
+          setRawSteps(
+            steps !== null && steps !== undefined ? String(steps) : String(OPENCODE_STEPS_DEFAULT)
+          );
+          // Color
+          setColorText(
+            isValidColor(cfg.color ?? "") ? cfg.color : OPENCODE_COLOR_DEFAULT
           );
         }
         setIsLoaded(true);
@@ -426,21 +530,55 @@ function TemperatureField({ agentId }: TemperatureFieldProps) {
       });
   }, [agentId, project?.projectDir]);
 
-  // ── Persist temperature to .adata ─────────────────────────────────────
-  function persistTemperature(temperature: number) {
+  // ── Generic persist: reads current state and writes all fields ─────────
+  function persistAll(overrides: {
+    temperature?: number;
+    hidden?: boolean;
+    steps?: number | null;
+    color?: string;
+  }) {
     if (!project) return;
-    // Read current provider+model to include in write
     window.agentsFlow
       .adataGetOpenCodeConfig({ projectDir: project.projectDir, agentId })
       .then((result) => {
-        const currentProvider =
-          result.success && result.config ? result.config.provider : (OPENCODE_PROVIDERS[0] ?? "");
-        const currentModel =
-          result.success && result.config ? result.config.model : "";
+        const cfg = result.success && result.config ? result.config : null;
+        const currentProvider = cfg ? cfg.provider : (OPENCODE_PROVIDERS[0] ?? "");
+        const currentModel = cfg ? cfg.model : "";
+        const currentTemp =
+          "temperature" in overrides
+            ? (overrides.temperature as number)
+            : cfg && isValidTemperature(cfg.temperature)
+            ? cfg.temperature
+            : OPENCODE_TEMPERATURE_DEFAULT;
+        const currentHidden =
+          "hidden" in overrides
+            ? (overrides.hidden as boolean)
+            : cfg
+            ? cfg.hidden
+            : OPENCODE_HIDDEN_DEFAULT;
+        const currentSteps =
+          "steps" in overrides
+            ? (overrides.steps as number | null)
+            : cfg
+            ? cfg.steps
+            : OPENCODE_STEPS_DEFAULT;
+        const currentColor =
+          "color" in overrides
+            ? (overrides.color as string)
+            : cfg
+            ? cfg.color
+            : OPENCODE_COLOR_DEFAULT;
         return window.agentsFlow.adataSetOpenCodeConfig({
           projectDir: project.projectDir,
           agentId,
-          config: { provider: currentProvider, model: currentModel, temperature },
+          config: {
+            provider: currentProvider,
+            model: currentModel,
+            temperature: currentTemp,
+            hidden: currentHidden,
+            steps: currentSteps,
+            color: currentColor,
+          },
         });
       })
       .catch(() => {
@@ -448,41 +586,108 @@ function TemperatureField({ agentId }: TemperatureFieldProps) {
       });
   }
 
-  // ── Input change handler ───────────────────────────────────────────────
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+  // ── Temperature handlers ───────────────────────────────────────────────
+  function handleTemperatureChange(e: React.ChangeEvent<HTMLInputElement>) {
     const strVal = e.target.value;
     setRawValue(strVal);
-    setError(null);
+    setTemperatureError(null);
 
     const numVal = parseFloat(strVal);
 
-    // Validate: required — empty string or NaN means invalid
     if (strVal.trim() === "" || isNaN(numVal)) {
-      setError("Temperature is required.");
+      setTemperatureError("Temperature is required.");
       return;
     }
 
-    // Validate: must be in range [0.0, 1.0]
     if (!isValidTemperature(numVal)) {
-      setError("Temperature must be between 0.0 and 1.0.");
+      setTemperatureError("Temperature must be between 0.0 and 1.0.");
       return;
     }
 
-    // Valid — debounced save
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      persistTemperature(numVal);
+      persistAll({ temperature: numVal });
     }, 400);
   }
 
-  // ── Blur handler: enforce value or restore default ─────────────────────
-  function handleBlur() {
+  function handleTemperatureBlur() {
     const numVal = parseFloat(rawValue);
     if (rawValue.trim() === "" || isNaN(numVal) || !isValidTemperature(numVal)) {
-      // Restore default on invalid/empty blur
       setRawValue(String(OPENCODE_TEMPERATURE_DEFAULT));
-      setError(null);
-      persistTemperature(OPENCODE_TEMPERATURE_DEFAULT);
+      setTemperatureError(null);
+      persistAll({ temperature: OPENCODE_TEMPERATURE_DEFAULT });
+    }
+  }
+
+  // ── Hidden handlers ────────────────────────────────────────────────────
+  function handleHiddenToggle() {
+    const next = !hidden;
+    setHidden(next);
+    persistAll({ hidden: next });
+  }
+
+  // ── Steps handlers ─────────────────────────────────────────────────────
+  function handleStepsChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const strVal = e.target.value;
+    setRawSteps(strVal);
+    setStepsError(null);
+
+    // Allow empty string — treated as default
+    if (strVal.trim() === "") {
+      if (stepsSaveTimerRef.current) clearTimeout(stepsSaveTimerRef.current);
+      stepsSaveTimerRef.current = setTimeout(() => {
+        persistAll({ steps: OPENCODE_STEPS_DEFAULT });
+      }, 400);
+      return;
+    }
+
+    const numVal = parseInt(strVal, 10);
+    if (isNaN(numVal) || !isValidSteps(numVal)) {
+      setStepsError(`Steps must be a whole number between ${OPENCODE_STEPS_MIN} and ${OPENCODE_STEPS_MAX}.`);
+      return;
+    }
+
+    if (stepsSaveTimerRef.current) clearTimeout(stepsSaveTimerRef.current);
+    stepsSaveTimerRef.current = setTimeout(() => {
+      persistAll({ steps: numVal });
+    }, 400);
+  }
+
+  function handleStepsBlur() {
+    const numVal = parseInt(rawSteps, 10);
+    if (rawSteps.trim() === "" || isNaN(numVal) || !isValidSteps(numVal)) {
+      setRawSteps(String(OPENCODE_STEPS_DEFAULT));
+      setStepsError(null);
+      persistAll({ steps: OPENCODE_STEPS_DEFAULT });
+    }
+  }
+
+  // ── Color handlers ─────────────────────────────────────────────────────
+  function handleColorTextChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setColorText(val);
+    setColorError(null);
+
+    if (!isValidColor(val)) {
+      setColorError("Color must be a valid hex value (e.g. #ffffff).");
+      return;
+    }
+
+    persistAll({ color: val });
+  }
+
+  function handleColorPickerChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setColorText(val);
+    setColorError(null);
+    persistAll({ color: val });
+  }
+
+  function handleColorBlur() {
+    if (!isValidColor(colorText)) {
+      setColorText(OPENCODE_COLOR_DEFAULT);
+      setColorError(null);
+      persistAll({ color: OPENCODE_COLOR_DEFAULT });
     }
   }
 
@@ -506,37 +711,167 @@ function TemperatureField({ agentId }: TemperatureFieldProps) {
           className={[
             "form-field__input",
             "opencode-config-form__temperature-input",
-            error ? "opencode-config-form__temperature-input--error" : "",
+            temperatureError ? "opencode-config-form__temperature-input--error" : "",
           ].filter(Boolean).join(" ")}
           value={rawValue}
           min={0.0}
           max={1.0}
           step={0.01}
-          onChange={handleChange}
-          onBlur={handleBlur}
+          onChange={handleTemperatureChange}
+          onBlur={handleTemperatureBlur}
           aria-label="OpenCode temperature"
           aria-describedby="opencode-temperature-help"
-          aria-invalid={error !== null}
+          aria-invalid={temperatureError !== null}
           autoComplete="off"
           required
         />
-        {/* Validation error */}
-        {error && (
+        {temperatureError && (
           <span
             className="agent-adapter-form__inline-error"
             role="alert"
             id="opencode-temperature-error"
           >
-            {error}
+            {temperatureError}
           </span>
         )}
-        {/* Help text */}
         <span
           className="opencode-config-form__temperature-help"
           id="opencode-temperature-help"
         >
           {OPENCODE_TEMPERATURE_HELP_TEXT}
         </span>
+      </div>
+
+      {/* ── Hidden toggle (sub-agent only) ────────────────────────────── */}
+      {isSubagent && (
+        <div className="agent-adapter-form__field opencode-hidden-field">
+          <div className="opencode-hidden-field__label-row">
+            <label
+              className="agent-adapter-form__label"
+              htmlFor="opencode-hidden-toggle"
+            >
+              Hidden
+            </label>
+            {/* ? help button */}
+            <button
+              type="button"
+              className="opencode-hidden-field__help-btn"
+              aria-label="Hidden field help"
+              onClick={() => setShowHiddenTooltip((v) => !v)}
+            >
+              ?
+            </button>
+          </div>
+          {showHiddenTooltip && (
+            <div
+              className="opencode-hidden-field__tooltip"
+              role="tooltip"
+              id="opencode-hidden-tooltip"
+            >
+              {OPENCODE_HIDDEN_TOOLTIP_TEXT}
+            </div>
+          )}
+          <button
+            id="opencode-hidden-toggle"
+            type="button"
+            className={[
+              "opencode-hidden-field__toggle",
+              hidden
+                ? "opencode-hidden-field__toggle--on"
+                : "opencode-hidden-field__toggle--off",
+            ].join(" ")}
+            onClick={handleHiddenToggle}
+            aria-pressed={hidden}
+            aria-label={hidden ? "Hidden: true" : "Hidden: false"}
+          >
+            {hidden ? OPENCODE_HIDDEN_LABEL_TRUE : OPENCODE_HIDDEN_LABEL_FALSE}
+          </button>
+        </div>
+      )}
+
+      {/* ── Steps number input (optional) ─────────────────────────────── */}
+      <div className="agent-adapter-form__field">
+        <label
+          className="agent-adapter-form__label"
+          htmlFor="opencode-steps-input"
+        >
+          Steps
+          <span className="link-rule-form__label-optional"> (optional)</span>
+        </label>
+        <input
+          id="opencode-steps-input"
+          type="number"
+          className={[
+            "form-field__input",
+            "opencode-config-form__steps-input",
+            stepsError ? "opencode-config-form__steps-input--error" : "",
+          ].filter(Boolean).join(" ")}
+          value={rawSteps}
+          min={OPENCODE_STEPS_MIN}
+          max={OPENCODE_STEPS_MAX}
+          step={1}
+          onChange={handleStepsChange}
+          onBlur={handleStepsBlur}
+          aria-label="OpenCode steps"
+          aria-invalid={stepsError !== null}
+          autoComplete="off"
+        />
+        {stepsError && (
+          <span
+            className="agent-adapter-form__inline-error"
+            role="alert"
+            id="opencode-steps-error"
+          >
+            {stepsError}
+          </span>
+        )}
+      </div>
+
+      {/* ── Color picker + hex text input ─────────────────────────────── */}
+      <div className="agent-adapter-form__field">
+        <label
+          className="agent-adapter-form__label"
+          htmlFor="opencode-color-text"
+        >
+          Color
+        </label>
+        <div className="opencode-color-field__row">
+          <input
+            id="opencode-color-picker"
+            type="color"
+            className="opencode-color-field__picker"
+            value={isValidColor(colorText) ? colorText : OPENCODE_COLOR_DEFAULT}
+            onChange={handleColorPickerChange}
+            aria-label="OpenCode color picker"
+          />
+          <input
+            id="opencode-color-text"
+            type="text"
+            className={[
+              "form-field__input",
+              "opencode-color-field__text",
+              colorError ? "opencode-color-field__text--error" : "",
+            ].filter(Boolean).join(" ")}
+            value={colorText}
+            onChange={handleColorTextChange}
+            onBlur={handleColorBlur}
+            placeholder="#ffffff"
+            aria-label="OpenCode color hex value"
+            aria-invalid={colorError !== null}
+            autoComplete="off"
+            spellCheck={false}
+            required
+          />
+        </div>
+        {colorError && (
+          <span
+            className="agent-adapter-form__inline-error"
+            role="alert"
+            id="opencode-color-error"
+          >
+            {colorError}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -590,7 +925,7 @@ function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
       });
   }, [agentId, project?.projectDir]);
 
-  // ── Persist helper (provider + model only; temperature handled separately) ─
+  // ── Persist helper (provider + model only; other fields handled separately) ─
   const persist = useCallback(
     (nextProvider: string, nextModel: string) => {
       if (!project) return;
@@ -598,18 +933,29 @@ function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
       const last = lastPersistedRef.current;
       if (last && last.provider === nextProvider && last.model === nextModel) return;
       lastPersistedRef.current = { provider: nextProvider, model: nextModel };
-      // Read current temperature from store to include in write
+      // Read current full config to include in write
       window.agentsFlow
         .adataGetOpenCodeConfig({ projectDir: project.projectDir, agentId })
         .then((result) => {
+          const cfg = result.success && result.config ? result.config : null;
           const currentTemp =
-            result.success && result.config && isValidTemperature(result.config.temperature)
-              ? result.config.temperature
+            cfg && isValidTemperature(cfg.temperature)
+              ? cfg.temperature
               : OPENCODE_TEMPERATURE_DEFAULT;
+          const currentHidden = cfg ? cfg.hidden : OPENCODE_HIDDEN_DEFAULT;
+          const currentSteps = cfg ? cfg.steps : OPENCODE_STEPS_DEFAULT;
+          const currentColor = cfg ? cfg.color : OPENCODE_COLOR_DEFAULT;
           return window.agentsFlow.adataSetOpenCodeConfig({
             projectDir: project.projectDir,
             agentId,
-            config: { provider: nextProvider, model: nextModel, temperature: currentTemp },
+            config: {
+              provider: nextProvider,
+              model: nextModel,
+              temperature: currentTemp,
+              hidden: currentHidden,
+              steps: currentSteps,
+              color: currentColor,
+            },
           });
         })
         .catch(() => {

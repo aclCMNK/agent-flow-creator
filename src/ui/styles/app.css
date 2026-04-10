@@ -4498,6 +4498,113 @@ button:disabled {
 	border-top: 1px solid var(--color-border);
 }
 
+/* ── Steps number input ───────────────────────────────────────────────── */
+.opencode-config-form__steps-input {
+	width: 100%;
+}
+
+.opencode-config-form__steps-input--error {
+	border-color: #e05252 !important;
+	box-shadow: 0 0 0 1.5px rgba(224, 82, 82, 0.18) !important;
+}
+
+/* ── Hidden toggle field ──────────────────────────────────────────────── */
+.opencode-hidden-field__label-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 6px;
+}
+
+.opencode-hidden-field__help-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	border: 1px solid var(--color-border);
+	background: var(--color-surface-2);
+	color: var(--color-text-muted);
+	font-size: 0.65rem;
+	font-weight: 700;
+	cursor: pointer;
+	padding: 0;
+	line-height: 1;
+	transition: background var(--transition), color var(--transition);
+}
+
+.opencode-hidden-field__help-btn:hover {
+	background: var(--color-primary);
+	color: #fff;
+	border-color: var(--color-primary);
+}
+
+.opencode-hidden-field__tooltip {
+	background: var(--color-surface-2);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-sm);
+	color: var(--color-text-muted);
+	font-size: 0.72rem;
+	line-height: 1.5;
+	padding: 6px 8px;
+	margin-bottom: 6px;
+}
+
+.opencode-hidden-field__toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 12px;
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--color-border);
+	background: var(--color-surface-2);
+	color: var(--color-text);
+	font-size: 0.85rem;
+	cursor: pointer;
+	transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.opencode-hidden-field__toggle--on {
+	background: var(--color-primary);
+	border-color: var(--color-primary);
+	color: #fff;
+}
+
+.opencode-hidden-field__toggle--off {
+	background: var(--color-surface-2);
+	border-color: var(--color-border);
+	color: var(--color-text-muted);
+}
+
+/* ── Color field ──────────────────────────────────────────────────────── */
+.opencode-color-field__row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.opencode-color-field__picker {
+	width: 36px;
+	height: 32px;
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-sm);
+	background: none;
+	padding: 2px;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.opencode-color-field__text {
+	flex: 1;
+	min-width: 0;
+}
+
+.opencode-color-field__text--error {
+	border-color: #e05252 !important;
+	box-shadow: 0 0 0 1.5px rgba(224, 82, 82, 0.18) !important;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Agent Profiling — AgentProfilesSection (in PropertiesPanel)
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -5293,4 +5400,172 @@ button:disabled {
 
 .permissions-modal__close-btn {
 	min-width: 70px;
+}
+
+/* ── Skills section ───────────────────────────────────────────────────────── */
+
+/* "Add skills" toolbar button — styled like "Add group" but with a skill accent */
+.permissions-modal__add-skills-btn {
+	font-size: 0.82rem;
+	padding: 5px 12px;
+	background: var(--color-surface-2) !important;
+	border-color: var(--color-border) !important;
+	color: var(--color-text-muted) !important;
+}
+
+.permissions-modal__add-skills-btn:hover:not(:disabled) {
+	background: var(--color-border) !important;
+	color: var(--color-text) !important;
+}
+
+/* Skills block container — distinct visual treatment */
+.permissions-modal__skills-block {
+	background: var(--color-surface-2);
+	border: 1px solid var(--color-primary, #6366f1);
+	border-radius: var(--radius-md);
+	padding: 12px 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* Skills header row */
+.permissions-modal__skills-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-bottom: 6px;
+	border-bottom: 1px solid var(--color-border);
+}
+
+/* Skills title text */
+.permissions-modal__skills-title {
+	flex: 1 1 auto;
+	font-size: 0.78rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--color-primary, #6366f1);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Count badge beside the title */
+.permissions-modal__skills-count {
+	font-size: 0.72rem;
+	font-weight: 500;
+	color: var(--color-text-muted);
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+.permissions-modal__skills-count--empty {
+	font-style: italic;
+}
+
+/* Entries list inside Skills block */
+.permissions-modal__skills-entries {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding-left: 4px;
+	border-left: 2px solid rgba(99, 102, 241, 0.3);
+	margin-left: 2px;
+	padding-top: 4px;
+}
+
+/* One skill permission row */
+.permissions-modal__skill-row {
+	display: flex;
+	align-items: flex-start;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* Skill error span — full width below the row */
+.permissions-modal__skill-error {
+	flex-basis: 100%;
+	font-size: 0.78rem;
+	color: var(--color-error, #f87171);
+}
+
+/* Matching skills badges — shown below the input as a review list */
+.permissions-modal__skill-matches {
+	flex-basis: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding-top: 2px;
+}
+
+.permissions-modal__skill-match-badge {
+	display: inline-block;
+	padding: 2px 7px;
+	background: rgba(99, 102, 241, 0.1);
+	border: 1px solid rgba(99, 102, 241, 0.25);
+	border-radius: 20px;
+	font-size: 0.72rem;
+	color: var(--color-primary, #6366f1);
+	font-family: var(--font-mono, monospace);
+	line-height: 1.4;
+}
+
+/* "Add skill" button inside skills section */
+.permissions-modal__add-skill-btn {
+	font-size: 0.78rem;
+	padding: 3px 10px;
+	align-self: flex-start;
+	color: var(--color-primary, #6366f1) !important;
+	border-color: transparent !important;
+}
+
+.permissions-modal__add-skill-btn:hover:not(:disabled) {
+	background: rgba(99, 102, 241, 0.08) !important;
+	border-color: transparent !important;
+}
+
+/* ── SkillInput autocomplete wrapper ──────────────────────────────────────── */
+
+.skill-input-wrapper {
+	position: relative;
+	flex: 1 1 180px;
+	min-width: 0;
+}
+
+.skill-input__field {
+	width: 100%;
+}
+
+/* Autocomplete dropdown */
+.skill-input__dropdown {
+	position: absolute;
+	top: calc(100% + 2px);
+	left: 0;
+	right: 0;
+	z-index: 1000;
+	background: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-sm, 4px);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+	list-style: none;
+	margin: 0;
+	padding: 4px 0;
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.skill-input__dropdown-item {
+	padding: 5px 10px;
+	font-size: 0.82rem;
+	font-family: var(--font-mono, monospace);
+	color: var(--color-text);
+	cursor: pointer;
+	transition: background 0.1s;
+}
+
+.skill-input__dropdown-item:hover,
+.skill-input__dropdown-item[aria-selected="true"] {
+	background: rgba(99, 102, 241, 0.1);
+	color: var(--color-primary, #6366f1);
 }

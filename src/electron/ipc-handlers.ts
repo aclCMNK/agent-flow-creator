@@ -66,6 +66,7 @@ import type {
   AdataReorderProfilesRequest,
   AdataGetPermissionsRequest,
   AdataSetPermissionsRequest,
+  AdataListSkillsRequest,
 } from "./bridge.types.ts";
 
 import {
@@ -80,11 +81,15 @@ import { migrateProjectProfiles } from "../storage/migrate-profiles.ts";
 import {
   getOpenCodeConfigFromAdata,
   OPENCODE_CONFIG_TEMPERATURE_DEFAULT,
+  OPENCODE_CONFIG_HIDDEN_DEFAULT,
+  OPENCODE_CONFIG_STEPS_DEFAULT,
+  OPENCODE_CONFIG_COLOR_DEFAULT,
 } from "./opencode-config-handlers.ts";
 import {
   handleGetPermissions,
   handleSetPermissions,
 } from "./permissions-handlers.ts";
+import { handleListSkills } from "./skills-handlers.ts";
 
 // ── Recents storage ────────────────────────────────────────────────────────
 
@@ -1001,12 +1006,35 @@ export function registerIpcHandlers(): void {
             ? req.config.temperature
             : OPENCODE_CONFIG_TEMPERATURE_DEFAULT;
 
+        // hidden defaults to false
+        const hidden =
+          typeof req.config.hidden === "boolean"
+            ? req.config.hidden
+            : OPENCODE_CONFIG_HIDDEN_DEFAULT;
+
+        // steps defaults to 7 (null is allowed — means unset)
+        const steps =
+          req.config.steps === null
+            ? null
+            : typeof req.config.steps === "number" && isFinite(req.config.steps)
+            ? req.config.steps
+            : OPENCODE_CONFIG_STEPS_DEFAULT;
+
+        // color defaults to "#ffffff"
+        const color =
+          typeof req.config.color === "string" && req.config.color.length > 0
+            ? req.config.color
+            : OPENCODE_CONFIG_COLOR_DEFAULT;
+
         const updated: Record<string, unknown> = {
           ...existing,
           opencode: {
             provider: req.config.provider,
             model: req.config.model,
             temperature,
+            hidden,
+            steps,
+            color,
           },
           updatedAt: new Date().toISOString(),
         };
@@ -1122,6 +1150,23 @@ export function registerIpcHandlers(): void {
       const result = await handleSetPermissions(req);
       if (!result.success) {
         console.error("[ipc] ADATA_SET_PERMISSIONS: error —", result.error);
+      }
+      return result;
+    }
+  );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Skills: scan {projectDir}/skills/ for SKILL.md files
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── List skills ────────────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.ADATA_LIST_SKILLS,
+    async (_event, req: AdataListSkillsRequest) => {
+      console.log("[ipc] ADATA_LIST_SKILLS: projectDir →", req.projectDir);
+      const result = await handleListSkills(req);
+      if (!result.success) {
+        console.error("[ipc] ADATA_LIST_SKILLS: error —", result.error);
       }
       return result;
     }

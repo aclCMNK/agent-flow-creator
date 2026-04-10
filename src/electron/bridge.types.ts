@@ -299,6 +299,13 @@ export const IPC_CHANNELS = {
 
   // Writes (replaces) the full permissions object for an agent.
   ADATA_SET_PERMISSIONS: "adata:set-permissions",
+
+  // ── Skills channels ───────────────────────────────────────────────────────
+  // Scans {projectDir}/skills/ recursively for SKILL.md files and returns
+  // their names as dash-joined relative paths from the skills root.
+
+  // Returns a sorted list of skill names found under {projectDir}/skills/.
+  ADATA_LIST_SKILLS: "adata:list-skills",
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -475,6 +482,23 @@ export interface OpenCodeConfig {
    * Always required — never null or undefined.
    */
   temperature: number;
+  /**
+   * Whether the sub-agent is hidden from the @ autocomplete menu.
+   * Only meaningful when agentType === "Sub-Agent". Defaults to false.
+   * Stored as boolean true/false.
+   */
+  hidden: boolean;
+  /**
+   * Number of steps for the agent to execute.
+   * Optional integer in the range [7, 100]. Defaults to 7.
+   * null means the field is not set (uses model default).
+   */
+  steps: number | null;
+  /**
+   * UI accent color for the agent, stored as a hex string (e.g. "#ffffff").
+   * Required — never null or undefined. Defaults to "#ffffff".
+   */
+  color: string;
 }
 
 /**
@@ -772,6 +796,31 @@ export interface AdataSetPermissionsResult {
   error?: string;
 }
 
+// ── Skills IPC types ───────────────────────────────────────────────────────
+//
+// Skills are .md documents stored under `{projectDir}/skills/` as:
+//   skills/<subdir>/SKILL.md
+//   skills/<category>/<name>/SKILL.md
+//
+// Their "skill name" is the relative path from `skills/` to the SKILL.md's
+// parent directory, with path separators replaced by dashes:
+//   skills/kb-search/SKILL.md           → "kb-search"
+//   skills/agents/summarizer/SKILL.md   → "agents-summarizer"
+
+/** Request payload for ADATA_LIST_SKILLS */
+export interface AdataListSkillsRequest {
+  /** Absolute path to the project directory */
+  projectDir: string;
+}
+
+/** Result of listing skills found under {projectDir}/skills/ */
+export interface AdataListSkillsResult {
+  success: boolean;
+  /** Sorted array of skill names (dash-joined relative paths). Empty when no skills exist. */
+  skills: string[];
+  error?: string;
+}
+
 // ── New-project creation types ─────────────────────────────────────────────
 
 /**
@@ -1039,6 +1088,15 @@ export interface AgentsFlowBridge {
    * Stored under the 'permissions' top-level key as a plain object.
    */
   adataSetPermissions(req: AdataSetPermissionsRequest): Promise<AdataSetPermissionsResult>;
+
+  // ── Skills ────────────────────────────────────────────────────────────────
+
+  /**
+   * Lists all skill names found under {projectDir}/skills/ recursively.
+   * Returns a sorted array of skill names (dash-joined relative paths).
+   * Returns an empty array when the skills directory does not exist.
+   */
+  adataListSkills(req: AdataListSkillsRequest): Promise<AdataListSkillsResult>;
 }
 
 // ── Global type augmentation ──────────────────────────────────────────────

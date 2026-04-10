@@ -11,7 +11,11 @@
  *       "perm": "value",
  *       ...
  *     },
- *     ...
+ *     "skills": {                   ← special Skills group
+ *       "kb-search": "allow",
+ *       "web*": "deny",
+ *       ...
+ *     }
  *   }
  *
  * # Layout
@@ -20,16 +24,15 @@
  *   │  Permissions                                                   [✕] │
  *   │  Permissions for {agentName}                                       │
  *   ├────────────────────────────────────────────────────────────────────┤
- *   │  [+ Add permission]  [+ Add group]                                 │
+ *   │  [+ Add permission]  [+ Add group]  [+ Add skills]                 │
  *   │                                                                    │
  *   │  ── Ungrouped permissions ──────────────────────────────────────── │
  *   │  read         [allow ▾]  [✕]                                       │
- *   │  execute      [ask ▾]    [✕]                                       │
  *   │                                                                    │
- *   │  ── Bash ───────────────────────────────────────────────────  [✕] │
- *   │    run-scripts   [allow ▾]  [✕]                                    │
- *   │    write-files   [deny ▾]   [✕]                                    │
- *   │    [+ Add permission]                                              │
+ *   │  ── Skills ─────────────────────────────────────────────────  [✕] │
+ *   │    kb-search  [allow ▾]  [✕]    (autocomplete input)               │
+ *   │    web*       [deny ▾]   [✕]                                       │
+ *   │    [+ Add skill]                                                   │
  *   ├────────────────────────────────────────────────────────────────────┤
  *   │  [Save]                               [Close]                     │
  *   └────────────────────────────────────────────────────────────────────┘
@@ -40,6 +43,8 @@
  *   - Group name: required, non-empty, unique at top level
  *   - Value: required, one of "allow" | "deny" | "ask"
  *   - Group names must not conflict with ungrouped permission names
+ *   - Skills group: skill name must match a real SKILL.md in {projectDir}/skills/
+ *     OR be a wildcard pattern (e.g. "web*") that matches at least one real skill
  *
  * # UX notes
  *
@@ -47,15 +52,26 @@
  *   - Saving calls ADATA_SET_PERMISSIONS and shows a success/error toast
  *   - Portal modal — rendered at document.body level via createPortal in App.tsx
  *   - "Close" button closes without saving
+ *   - Skills section: as user types, a dropdown shows matching skills from disk
+ *   - Skills section: if input doesn't match any real skill, saving is blocked
+ *     with a clear inline error
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { PermissionsObject, PermissionValue } from "../../../electron/bridge.types.ts";
+import {
+  filterSkillsForAutocomplete,
+  validateSkillsSection,
+} from "./SkillsPermissions.ts";
+import type { LocalSkillEntry } from "./SkillsPermissions.ts";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 /** Valid permission values */
 export const PERMISSION_VALUES = ["allow", "deny", "ask"] as const;
+
+/** Reserved group name for the Skills section */
+const SKILLS_GROUP_KEY = "skills";
 
 // ── Props ──────────────────────────────────────────────────────────────────
 
@@ -109,6 +125,8 @@ interface LocalGroup {
 interface LocalState {
   ungrouped: LocalUngrouped[];
   groups: LocalGroup[];
+  /** Entries in the special "skills" group. null = no skills section added */
+  skills: LocalSkillEntry[] | null;
 }
 
 // ── Conversion helpers ─────────────────────────────────────────────────────
@@ -116,22 +134,33 @@ interface LocalState {
 function toLocalState(remote: PermissionsObject): LocalState {
   const ungrouped: LocalUngrouped[] = [];
   const groups: LocalGroup[] = [];
+  let skills: LocalSkillEntry[] | null = null;
 
   for (const [key, value] of Object.entries(remote)) {
     if (typeof value === "string") {
       ungrouped.push({ localId: makeLocalId(), name: key, value, error: undefined });
     } else if (typeof value === "object" && value !== null) {
-      const perms: LocalGroupPerm[] = Object.entries(value).map(([pKey, pVal]) => ({
-        localId: makeLocalId(),
-        name: pKey,
-        value: pVal as PermissionValue,
-        error: undefined,
-      }));
-      groups.push({ localId: makeLocalId(), name: key, perms, nameError: undefined });
+      if (key === SKILLS_GROUP_KEY) {
+        // Special skills section
+        skills = Object.entries(value).map(([skillName, skillVal]) => ({
+          localId: makeLocalId(),
+          name: skillName,
+          value: skillVal as PermissionValue,
+          error: undefined,
+        }));
+      } else {
+        const perms: LocalGroupPerm[] = Object.entries(value).map(([pKey, pVal]) => ({
+          localId: makeLocalId(),
+          name: pKey,
+          value: pVal as PermissionValue,
+          error: undefined,
+        }));
+        groups.push({ localId: makeLocalId(), name: key, perms, nameError: undefined });
+      }
     }
   }
 
-  return { ungrouped, groups };
+  return { ungrouped, groups, skills };
 }
 
 function toRemotePermissions(local: LocalState): PermissionsObject {
@@ -148,6 +177,14 @@ function toRemotePermissions(local: LocalState): PermissionsObject {
       groupObj[p.name.trim()] = p.value;
     }
     result[groupName] = groupObj;
+  }
+
+  if (local.skills !== null && local.skills.length > 0) {
+    const skillsObj: Record<string, PermissionValue> = {};
+    for (const s of local.skills) {
+      skillsObj[s.name.trim()] = s.value;
+    }
+    result[SKILLS_GROUP_KEY] = skillsObj;
   }
 
   return result;
@@ -167,10 +204,14 @@ export interface ValidateLocalStateResult {
  *   - Ungrouped permission names: required, non-empty, unique across all top-level names
  *   - Group names: required, non-empty, unique across all top-level names
  *   - Group permission names: required, non-empty, unique within the same group
+ *   - Skills entries: name must match a real skill or wildcard pattern
  *
  * Returns a new state with error fields filled in, and hasErrors flag.
  */
-export function validateLocalState(state: LocalState): ValidateLocalStateResult {
+export function validateLocalState(
+  state: LocalState,
+  availableSkills: string[] = []
+): ValidateLocalStateResult {
   let hasErrors = false;
 
   // All top-level names (ungrouped perm names + group names) must be unique
@@ -231,10 +272,105 @@ export function validateLocalState(state: LocalState): ValidateLocalStateResult 
     return { ...g, nameError, perms: validatedPerms };
   });
 
+  // Validate skills section
+  let validatedSkills: LocalSkillEntry[] | null = state.skills ?? null;
+  if (validatedSkills !== null) {
+    const { entries, hasErrors: skillErrors } = validateSkillsSection(
+      validatedSkills,
+      availableSkills
+    );
+    validatedSkills = entries;
+    if (skillErrors) hasErrors = true;
+  }
+
   return {
-    state: { ungrouped: validatedUngrouped, groups: validatedGroups },
+    state: { ungrouped: validatedUngrouped, groups: validatedGroups, skills: validatedSkills },
     hasErrors,
   };
+}
+
+// ── SkillInput: autocomplete input for a skill name ──────────────────────────
+
+interface SkillInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  availableSkills: string[];
+  error?: string;
+  placeholder?: string;
+}
+
+function SkillInput({ value, onChange, availableSkills, error, placeholder }: SkillInputProps) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const suggestions = filterSkillsForAutocomplete(value, availableSkills);
+  const showDropdown = dropdownOpen && suggestions.length > 0;
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function handleSelect(skill: string) {
+    onChange(skill);
+    setDropdownOpen(false);
+  }
+
+  return (
+    <div className="skill-input-wrapper" ref={containerRef}>
+      <input
+        type="text"
+        className={[
+          "form-field__input",
+          "permissions-modal__perm-name-input",
+          "skill-input__field",
+          error ? "permissions-modal__input--error" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setDropdownOpen(true);
+        }}
+        onFocus={() => setDropdownOpen(true)}
+        placeholder={placeholder ?? "Skill name or pattern (e.g. kb-search, web*)"}
+        aria-label="Skill name"
+        aria-expanded={showDropdown}
+        aria-haspopup="listbox"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {showDropdown && (
+        <ul
+          className="skill-input__dropdown"
+          role="listbox"
+          aria-label="Matching skills"
+        >
+          {suggestions.map((skill) => (
+            <li
+              key={skill}
+              className="skill-input__dropdown-item"
+              role="option"
+              aria-selected={value === skill}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleSelect(skill);
+              }}
+            >
+              {skill}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // ── PermissionsModal ───────────────────────────────────────────────────────
@@ -246,26 +382,37 @@ export function PermissionsModal({
   onClose,
 }: PermissionsModalProps) {
   // ── State ─────────────────────────────────────────────────────────────
-  const [localState, setLocalState] = useState<LocalState>({ ungrouped: [], groups: [] });
+  const [localState, setLocalState] = useState<LocalState>({ ungrouped: [], groups: [], skills: null });
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
 
   // Toast state
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Load permissions on mount ─────────────────────────────────────────
+  // ── Load permissions and skills on mount ──────────────────────────────
   const loadPermissions = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const result = await window.agentsFlow.adataGetPermissions({ projectDir, agentId });
-      if (result.success) {
-        setLocalState(toLocalState(result.permissions));
+      // Load permissions and available skills in parallel
+      const [permResult, skillsResult] = await Promise.all([
+        window.agentsFlow.adataGetPermissions({ projectDir, agentId }),
+        window.agentsFlow.adataListSkills({ projectDir }),
+      ]);
+
+      if (permResult.success) {
+        setLocalState(toLocalState(permResult.permissions));
       } else {
-        setLoadError(result.error ?? "Failed to load permissions.");
+        setLoadError(permResult.error ?? "Failed to load permissions.");
       }
+
+      if (skillsResult.success) {
+        setAvailableSkills(skillsResult.skills);
+      }
+      // silently ignore skills listing errors — UI degrades gracefully
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load permissions.");
     } finally {
@@ -420,10 +567,58 @@ export function PermissionsModal({
     }));
   }
 
+  // ── Handlers: Skills section ──────────────────────────────────────────
+
+  function handleAddSkillsSection() {
+    setLocalState((prev) => ({
+      ...prev,
+      skills: prev.skills ?? [],
+    }));
+  }
+
+  function handleRemoveSkillsSection() {
+    setLocalState((prev) => ({ ...prev, skills: null }));
+  }
+
+  function handleAddSkillEntry() {
+    setLocalState((prev) => ({
+      ...prev,
+      skills: [
+        ...(prev.skills ?? []),
+        { localId: makeLocalId(), name: "", value: "allow" as PermissionValue, error: undefined },
+      ],
+    }));
+  }
+
+  function handleRemoveSkillEntry(skillLocalId: string) {
+    setLocalState((prev) => ({
+      ...prev,
+      skills: (prev.skills ?? []).filter((s) => s.localId !== skillLocalId),
+    }));
+  }
+
+  function handleSkillNameChange(skillLocalId: string, name: string) {
+    setLocalState((prev) => ({
+      ...prev,
+      skills: (prev.skills ?? []).map((s) =>
+        s.localId === skillLocalId ? { ...s, name, error: undefined } : s
+      ),
+    }));
+  }
+
+  function handleSkillValueChange(skillLocalId: string, value: PermissionValue) {
+    setLocalState((prev) => ({
+      ...prev,
+      skills: (prev.skills ?? []).map((s) =>
+        s.localId === skillLocalId ? { ...s, value } : s
+      ),
+    }));
+  }
+
   // ── Save handler ───────────────────────────────────────────────────────
 
   async function handleSave() {
-    const { state: validated, hasErrors } = validateLocalState(localState);
+    const { state: validated, hasErrors } = validateLocalState(localState, availableSkills);
     if (hasErrors) {
       setLocalState(validated);
       return;
@@ -450,7 +645,12 @@ export function PermissionsModal({
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  const hasContent = localState.ungrouped.length > 0 || localState.groups.length > 0;
+  const hasContent =
+    localState.ungrouped.length > 0 ||
+    localState.groups.length > 0 ||
+    localState.skills !== null;
+
+  const hasSkillsSection = localState.skills !== null;
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -518,14 +718,24 @@ export function PermissionsModal({
               >
                 + Add group
               </button>
+              {!hasSkillsSection && (
+                <button
+                  type="button"
+                  className="btn btn--ghost permissions-modal__add-skills-btn"
+                  onClick={handleAddSkillsSection}
+                  aria-label="Add skills permissions"
+                >
+                  + Add skills
+                </button>
+              )}
             </div>
           )}
 
           {/* ── Empty state ───────────────────────────────────────── */}
           {!isLoading && !hasContent && !loadError && (
             <p className="permissions-modal__empty">
-              No permissions defined. Click <strong>+ Add permission</strong> or{" "}
-              <strong>+ Add group</strong> to begin.
+              No permissions defined. Click <strong>+ Add permission</strong>,{" "}
+              <strong>+ Add group</strong>, or <strong>+ Add skills</strong> to begin.
             </p>
           )}
 
@@ -693,6 +903,104 @@ export function PermissionsModal({
                 </div>
               </div>
             ))}
+
+          {/* ── Skills section ─────────────────────────────────────── */}
+          {!isLoading && localState.skills !== null && (
+            <div className="permissions-modal__skills-block">
+              {/* ── Skills header ──────────────────────────── */}
+              <div className="permissions-modal__skills-header">
+                <span className="permissions-modal__skills-title">
+                  Skills
+                  {availableSkills.length > 0 && (
+                    <span className="permissions-modal__skills-count">
+                      {availableSkills.length} skill{availableSkills.length !== 1 ? "s" : ""} available
+                    </span>
+                  )}
+                  {availableSkills.length === 0 && (
+                    <span className="permissions-modal__skills-count permissions-modal__skills-count--empty">
+                      No skills found in project
+                    </span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn--ghost permissions-modal__remove-group-btn"
+                  onClick={handleRemoveSkillsSection}
+                  aria-label="Remove skills section"
+                  title="Remove skills section"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* ── Skill entries ──────────────────────────── */}
+              <div className="permissions-modal__skills-entries">
+                {localState.skills.map((s) => {
+                  const suggestions = filterSkillsForAutocomplete(s.name, availableSkills);
+                  return (
+                    <div key={s.localId} className="permissions-modal__skill-row">
+                      <SkillInput
+                        value={s.name}
+                        onChange={(name) => handleSkillNameChange(s.localId, name)}
+                        availableSkills={availableSkills}
+                        error={s.error}
+                      />
+                      <select
+                        className="form-field__select permissions-modal__perm-value-select"
+                        value={s.value}
+                        onChange={(e) =>
+                          handleSkillValueChange(s.localId, e.target.value as PermissionValue)
+                        }
+                        aria-label="Skill permission value"
+                      >
+                        {PERMISSION_VALUES.map((v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn--ghost permissions-modal__remove-perm-btn"
+                        onClick={() => handleRemoveSkillEntry(s.localId)}
+                        aria-label={`Remove skill permission ${s.name || "unnamed"}`}
+                        title="Remove skill entry"
+                      >
+                        ✕
+                      </button>
+                      {s.error && (
+                        <span
+                          className="permissions-modal__field-error permissions-modal__skill-error"
+                          role="alert"
+                        >
+                          {s.error}
+                        </span>
+                      )}
+                      {/* Matching skills preview (shown when there are matches and no error) */}
+                      {!s.error && suggestions.length > 0 && s.name.trim() !== "" && (
+                        <div className="permissions-modal__skill-matches" aria-label="Matching skills">
+                          {suggestions.map((match) => (
+                            <span key={match} className="permissions-modal__skill-match-badge">
+                              {match}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  className="btn btn--ghost permissions-modal__add-perm-btn permissions-modal__add-skill-btn"
+                  onClick={handleAddSkillEntry}
+                  aria-label="Add skill permission"
+                >
+                  + Add skill
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Footer ─────────────────────────────────────────────── */}
