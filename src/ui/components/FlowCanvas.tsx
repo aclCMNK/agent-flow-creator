@@ -184,6 +184,8 @@ interface UserCanvasNodeProps {  x: number;
   isDragging: boolean;
   dragX?: number;
   dragY?: number;
+  /** Whether this node is currently selected (shows glow) */
+  isSelected: boolean;
   /** Whether this node is highlighted as a link drop target */
   isLinkTarget: boolean;
   /** Whether a link drag is currently in progress (from any node) */
@@ -205,7 +207,7 @@ interface UserCanvasNodeProps {  x: number;
 function UserCanvasNode({
   x, y,
   isDragging, dragX, dragY,
-  isLinkTarget, isLinkDragActive,
+  isSelected, isLinkTarget, isLinkDragActive,
   onHandleMouseDown,
   onGripMouseDown,
   onBodyClick,
@@ -234,6 +236,7 @@ function UserCanvasNode({
       className={[
         "flow-canvas__user-node",
         isDragging       ? "flow-canvas__user-node--dragging"          : "",
+        isSelected       ? "flow-canvas__user-node--selected"          : "",
         isLinkTarget     ? "flow-canvas__user-node--link-target"       : "",
         isLinkDragActive ? "flow-canvas__user-node--link-drag-active"  : "",
       ].filter(Boolean).join(" ")}
@@ -444,6 +447,8 @@ interface CanvasNodeProps {
   isDragging: boolean;
   dragX?: number;
   dragY?: number;
+  /** Whether this node is currently selected (shows glow) */
+  isSelected: boolean;
   /** Whether this node is highlighted as a link drop target */
   isLinkTarget: boolean;
   /** Whether a link drag is currently in progress (from any node) */
@@ -465,7 +470,7 @@ interface CanvasNodeProps {
 function CanvasNode({
   id, name, type, isOrchestrator, x, y,
   isDragging, dragX, dragY,
-  isLinkTarget, isLinkDragActive,
+  isSelected, isLinkTarget, isLinkDragActive,
   onHandleMouseDown,
   onGripMouseDown,
   onBodyClick,
@@ -501,6 +506,7 @@ function CanvasNode({
         "flow-canvas__node",
         isDragging      ? "flow-canvas__node--dragging"     : "",
         isOrchestrator  ? "flow-canvas__node--orchestrator" : "",
+        isSelected      ? "flow-canvas__node--selected"     : "",
         isLinkTarget    ? "flow-canvas__node--link-target"  : "",
         isLinkDragActive ? "flow-canvas__node--link-drag-active" : "",
       ].filter(Boolean).join(" ")}
@@ -985,6 +991,7 @@ export function FlowCanvas() {
   const moveUserNode    = useAgentFlowStore((s) => s.moveUserNode);
   const links           = useAgentFlowStore((s) => s.links);
   const selectedLinkId  = useAgentFlowStore((s) => s.selectedLinkId);
+  const selectedNodeId  = useAgentFlowStore((s) => s.selectedNodeId);
   const addLink         = useAgentFlowStore((s) => s.addLink);
   const deleteLink      = useAgentFlowStore((s) => s.deleteLink);
   const selectLink      = useAgentFlowStore((s) => s.selectLink);
@@ -1710,6 +1717,7 @@ export function FlowCanvas() {
             isDragging={draggingId === agent.id}
             dragX={draggingId === agent.id ? dragPos.x : undefined}
             dragY={draggingId === agent.id ? dragPos.y : undefined}
+            isSelected={selectedNodeId === agent.id}
             isLinkTarget={
               isDraggingLink &&
               linkDrag?.hoverTargetId === agent.id &&
@@ -1733,6 +1741,7 @@ export function FlowCanvas() {
             isDragging={draggingId === USER_NODE_ID}
             dragX={draggingId === USER_NODE_ID ? dragPos.x : undefined}
             dragY={draggingId === USER_NODE_ID ? dragPos.y : undefined}
+            isSelected={selectedNodeId === USER_NODE_ID}
             isLinkTarget={
               isDraggingLink &&
               linkDrag?.hoverTargetId === USER_NODE_ID &&

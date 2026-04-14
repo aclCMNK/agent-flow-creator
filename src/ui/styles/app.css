@@ -39,6 +39,16 @@
 	--radius-md: 8px;
 	--radius-lg: 12px;
 	--transition: 150ms ease;
+
+	/* ── Node selection glow — edit only this block to tune the effect ─── */
+	/* Indigo glow for regular agent nodes (matches link selection color)    */
+	--node-glow-color: rgba(99, 102, 241, 0.55);
+	--node-glow-ring: rgba(99, 102, 241, 0.45);
+	--node-glow-border: #a5b4fc;
+	/* Teal glow for the User node (matches its teal color scheme)           */
+	--user-node-glow-color: rgba(34, 211, 238, 0.55);
+	--user-node-glow-ring: rgba(34, 211, 238, 0.40);
+	--user-node-glow-border: #67e8f9;
 }
 
 html,
@@ -3647,6 +3657,27 @@ button:disabled {
 	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35), 0 4px 18px rgba(99, 102, 241, 0.3) !important;
 }
 
+/* ── Node: selected glow ──────────────────────────────────────────────────── */
+/*
+ * Applied to a node when it is selected (selectedNodeId matches its id).
+ * Uses the same indigo accent as link selection for visual consistency.
+ * To tune: edit --node-glow-* in :root above.
+ */
+
+.flow-canvas__node--selected {
+	border-color: var(--node-glow-border);
+	box-shadow:
+		0 0 0 3px var(--node-glow-ring),
+		0 4px 22px var(--node-glow-color);
+}
+
+.flow-canvas__node--selected:hover {
+	border-color: var(--node-glow-border);
+	box-shadow:
+		0 0 0 3px var(--node-glow-ring),
+		0 4px 22px var(--node-glow-color);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* Flow Canvas — User Node (circular, immutable, teal accent)                  */
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -3692,6 +3723,27 @@ button:disabled {
 .flow-canvas__user-node--link-target {
 	border-color: #22d3ee !important;
 	box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.4), 0 4px 18px rgba(8, 145, 178, 0.45) !important;
+}
+
+/* ── User node: selected glow ─────────────────────────────────────────────── */
+/*
+ * Applied to the User node when it is selected (selectedNodeId === "user-node").
+ * Uses teal accent to stay consistent with the User node color scheme.
+ * To tune: edit --user-node-glow-* in :root above.
+ */
+
+.flow-canvas__user-node--selected {
+	border-color: var(--user-node-glow-border);
+	box-shadow:
+		0 0 0 3px var(--user-node-glow-ring),
+		0 4px 22px var(--user-node-glow-color);
+}
+
+.flow-canvas__user-node--selected:hover {
+	border-color: var(--user-node-glow-border);
+	box-shadow:
+		0 0 0 3px var(--user-node-glow-ring),
+		0 4px 22px var(--user-node-glow-color);
 }
 
 .flow-canvas__user-node--link-drag-active:not(.flow-canvas__user-node--link-target) {
