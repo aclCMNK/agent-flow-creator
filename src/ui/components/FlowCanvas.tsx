@@ -41,6 +41,7 @@
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useReducer } from "react";
 import { type AgentType, useAgentFlowStore, USER_NODE_ID } from "../store/agentFlowStore.ts";
 import { useProjectStore } from "../store/projectStore.ts";
+import { useEditorConfig } from "../hooks/useEditorConfig.ts";
 
 // ── User Node dimensions ───────────────────────────────────────────────────
 // The User node is a circle; we use diameter for both width and height.
@@ -994,6 +995,9 @@ export function FlowCanvas() {
   const project      = useProjectStore((s) => s.project);
   const saveProject  = useProjectStore((s) => s.saveProject);
 
+  // ── Editor config (from project properties.editor) ───────────────────────
+  const editorConfig = useEditorConfig();
+
   const canvasRef    = useRef<HTMLDivElement>(null);
   const viewportRef  = useRef<HTMLDivElement>(null);
 
@@ -1050,6 +1054,13 @@ export function FlowCanvas() {
   const isPanningRef = useRef(false);
   const panStartRef  = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 });
   const [isPanning, setIsPanning] = useState(false);
+
+  // ── Gesture pan state (touchpad two-finger + middle mouse button) ─────────
+  // Separate from hand-mode pan — does not require activeTool === "hand".
+  // Does not disable node interactions.
+  const [isGesturePanning, setIsGesturePanning] = useState(false);
+  const midMousePanStartRef = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 });
+  const isMidMousePanningRef = useRef(false);
 
   // ── Placement mode state ─────────────────────────────────────────────────
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -1211,6 +1222,136 @@ export function FlowCanvas() {
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [activeTool, scheduleViewportSave]);
+
+  // ── Touchpad two-finger pan (wheel event without ctrlKey) ─────────────────
+  //
+  // Strategy: browsers fire `wheel` for both:
+  //   - Pinch-to-zoom:        deltaX/deltaY small, ctrlKey = true  → we use this for zoom
+  //   - Two-finger scroll:    deltaX/deltaY large, ctrlKey = false → we use this for pan
+  //
+  // Guard: only active when editorConfig.touchpad === true.
+  // The speed factor editorConfig.touchpad_pan scales the deltas.
+  // We apply the deltas directly (no drag state needed — wheel events are discrete).
+
+  const handleWheelPan = useCallback((e: WheelEvent) => {
+    // ctrlKey = true → pinch-to-zoom — let the existing zoom handler take it
+    if (e.ctrlKey) return;
+
+    // Touchpad pan disabled by project config
+    if (!editorConfig.touchpad) return;
+
+    // Prevent the browser from scrolling the page
+    e.preventDefault();
+
+    const speed = editorConfig.touchpad_pan;
+    const vp = viewportRef2.current;
+
+    const newPanX = vp.panX - e.deltaX * speed;
+    const newPanY = vp.panY - e.deltaY * speed;
+
+    // Apply immediately via ref for zero-lag visual feedback
+    viewportRef2.current = { ...vp, panX: newPanX, panY: newPanY };
+    if (viewportRef.current) {
+      viewportRef.current.style.transform =
+        `translate(${newPanX}px, ${newPanY}px) scale(${vp.zoom})`;
+    }
+
+    // Show grabbing cursor briefly while gesturing
+    setIsGesturePanning(true);
+
+    // Debounce: sync React state + schedule save after gesture settles.
+    // Re-use scheduleViewportSave (shared debounce timer) so this doesn't race
+    // with zoom or hand-mode saves.
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const final = viewportRef2.current;
+      setViewport({ ...final });
+      setIsGesturePanning(false);
+      scheduleViewportSave(final);
+    }, 300);
+  }, [editorConfig.touchpad, editorConfig.touchpad_pan, scheduleViewportSave]);
+
+  // Attach wheel listener with { passive: false } so we can call preventDefault.
+  // Must be a native addEventListener (not React synthetic) to set passive: false.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.addEventListener("wheel", handleWheelPan, { passive: false });
+    return () => { canvas.removeEventListener("wheel", handleWheelPan); };
+  }, [handleWheelPan]);
+
+  // ── Middle mouse button pan ───────────────────────────────────────────────
+  //
+  // Active regardless of activeTool (no need to switch to hand mode).
+  // Speed scaled by editorConfig.mouse_pan.
+  // Shows "grabbing" cursor while dragging (via flow-canvas--gesture-panning).
+  // Does NOT disable node pointer events (node interactions still work after release).
+
+  const handleMiddleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 1) return; // middle button only
+
+    // Never initiate from floating panels
+    const target = e.target as Element;
+    if (
+      target.closest(".canvas-tool-panel") ||
+      target.closest(".canvas-zoom-panel")
+    ) {
+      return;
+    }
+
+    e.preventDefault();
+
+    const vp = viewportRef2.current;
+    midMousePanStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      panX: vp.panX,
+      panY: vp.panY,
+    };
+    isMidMousePanningRef.current = false;
+
+    const speed = editorConfig.mouse_pan;
+
+    function onMouseMove(ev: MouseEvent) {
+      const dx = (ev.clientX - midMousePanStartRef.current.mouseX) * speed;
+      const dy = (ev.clientY - midMousePanStartRef.current.mouseY) * speed;
+
+      if (!isMidMousePanningRef.current && Math.abs(dx) + Math.abs(dy) > 3) {
+        isMidMousePanningRef.current = true;
+        setIsGesturePanning(true);
+      }
+
+      if (!isMidMousePanningRef.current) return;
+
+      const newPanX = midMousePanStartRef.current.panX + dx;
+      const newPanY = midMousePanStartRef.current.panY + dy;
+
+      // Apply via ref for zero-lag visual feedback
+      viewportRef2.current = { ...viewportRef2.current, panX: newPanX, panY: newPanY };
+      if (viewportRef.current) {
+        viewportRef.current.style.transform =
+          `translate(${newPanX}px, ${newPanY}px) scale(${viewportRef2.current.zoom})`;
+      }
+    }
+
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+
+      const finalVp = viewportRef2.current;
+      setIsGesturePanning(false);
+
+      if (isMidMousePanningRef.current) {
+        setViewport({ ...finalVp });
+        scheduleViewportSave(finalVp);
+      }
+
+      isMidMousePanningRef.current = false;
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [editorConfig.mouse_pan, scheduleViewportSave]);
 
   // ── Zoom (slider) ─────────────────────────────────────────────────────────
 
@@ -1525,22 +1666,26 @@ export function FlowCanvas() {
       ref={canvasRef}
       className={[
         "flow-canvas",
-        isPlacing       ? "flow-canvas--placing"         : "",
-        draggingId      ? "flow-canvas--dragging-active" : "",
-        isDraggingLink  ? "flow-canvas--linking"         : "",
-        activeTool === "hand" ? "flow-canvas--pan-mode"  : "",
-        isPanning       ? "flow-canvas--panning"         : "",
+        isPlacing         ? "flow-canvas--placing"          : "",
+        draggingId        ? "flow-canvas--dragging-active"  : "",
+        isDraggingLink    ? "flow-canvas--linking"          : "",
+        activeTool === "hand" ? "flow-canvas--pan-mode"     : "",
+        isPanning         ? "flow-canvas--panning"          : "",
+        isGesturePanning  ? "flow-canvas--gesture-panning"  : "",
       ].filter(Boolean).join(" ")}
       onMouseMove={handleMouseMove}
       onClick={handleCanvasClick}
-      onMouseDown={handleCanvasMouseDown}
+      onMouseDown={(e) => {
+        handleCanvasMouseDown(e);
+        handleMiddleMouseDown(e);
+      }}
       aria-label="Flow canvas"
       role="region"
     >
       {/* ── Viewport: all nodes + SVG links live here, transformed for pan/zoom ── */}
       <div
         ref={viewportRef}
-        className={`flow-canvas__viewport${isPanning ? " flow-canvas__viewport--panning" : ""}`}
+        className={`flow-canvas__viewport${(isPanning || isGesturePanning) ? " flow-canvas__viewport--panning" : ""}`}
         style={{ transform: viewportTransform }}
       >
         {/* SVG links layer — rendered first in DOM so nodes appear above */}

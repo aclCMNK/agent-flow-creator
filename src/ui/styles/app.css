@@ -3832,6 +3832,12 @@ button:disabled {
 	pointer-events: none;
 }
 
+/* Mid-button or touchpad pan active — show grabbing cursor regardless of tool mode.
+   Nodes keep pointer events because we do not enter "hand mode" for these gestures. */
+.flow-canvas--gesture-panning {
+	cursor: grabbing !important;
+}
+
 /* Floating panels are ALWAYS interactive regardless of canvas mode.
    pointer-events: all ensures they are never silenced by an ancestor rule. */
 .canvas-tool-panel,
