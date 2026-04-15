@@ -858,3 +858,38 @@ describe("buildAgentOpenCodeJson — hidden sub-agent", () => {
     expect(entry.step).toBeUndefined();
   });
 });
+
+// ── ExportModal sanity: handlePickDir calls bridge.selectExportDir ─────────────
+//
+// These static assertions guard against regressions where handlePickDir is
+// accidentally wired to a different IPC channel or reads the wrong result field.
+
+import { readFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const EXPORT_MODAL_PATH = join(__dirname, "../../src/ui/components/ExportModal/ExportModal.tsx");
+
+describe("ExportModal — handlePickDir sanity check", () => {
+  it("calls bridge.selectExportDir() to open the folder picker", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("bridge.selectExportDir()");
+  });
+
+  it("reads result.dirPath from the selectExportDir response", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    // The handler should check result.dirPath (the field returned by the IPC handler)
+    expect(source).toContain("result.dirPath");
+  });
+
+  it("does not call selectExportDir with getFocusedWindow or window args", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    // The UI side must not pass window references — window resolution is main-process only
+    const pickDirIdx = source.indexOf("handlePickDir");
+    expect(pickDirIdx).toBeGreaterThan(-1);
+    const pickDirBlock = source.slice(pickDirIdx, pickDirIdx + 300);
+    expect(pickDirBlock).not.toContain("getFocusedWindow");
+    expect(pickDirBlock).not.toContain("BrowserWindow");
+  });
+});

@@ -27,6 +27,7 @@ import { validateNewProjectDir, createProject } from "../loader/project-factory.
 import type { LoadResult, ProjectModel, AgentModel } from "../loader/types.ts";
 
 import { IPC_CHANNELS } from "./bridge.types.ts";
+import { buildAdataFromExisting } from "./adata-builder.ts";
 import type {
   BridgeLoadResult,
   SerializableProjectModel,
@@ -723,31 +724,7 @@ export function registerIpcHandlers(): void {
             // File doesn't exist yet — start fresh
           }
 
-          const adata: Record<string, unknown> = {
-            version: 1,
-            agentId: node.id,
-            agentName: node.name,
-            description: node.description,
-            aspects: (existing.aspects as unknown[]) ?? [],
-            skills: (existing.skills as unknown[]) ?? [],
-            subagents: (existing.subagents as unknown[]) ?? [],
-            // Use existing profilePath if set (RENAME_AGENT_FOLDER may have updated it),
-            // otherwise fall back to the slug-based default.
-            profilePath: (typeof existing.profilePath === "string" && existing.profilePath.length > 0)
-              ? existing.profilePath
-              : `behaviors/${node.name}/profile.md`,
-            // Preserve existing profile[] entries (managed by RENAME_AGENT_FOLDER / profile handlers)
-            profile: (existing.profile as unknown[]) ?? [],
-            metadata: {
-              ...((existing.metadata as Record<string, unknown>) ?? {}),
-              agentType: node.type,
-              isOrchestrator: String(node.isOrchestrator),
-              // hidden is only meaningful for Sub-Agent; always false for other types
-              hidden: node.type === "Sub-Agent" ? String(node.hidden) : "false",
-            },
-            createdAt: (existing.createdAt as string) ?? now,
-            updatedAt: now,
-          };
+          const adata = buildAdataFromExisting(node, existing, now);
 
           await atomicWriteJson(adataPath, adata);
           console.log("[ipc] SAVE_AGENT_GRAPH: .adata written →", adataPath);
@@ -1368,15 +1345,24 @@ export function registerIpcHandlers(): void {
   // ══════════════════════════════════════════════════════════════════════
 
   // ── Select export directory ────────────────────────────────────────────
+  //
+  // NOTE (DRY): Use BrowserWindow.fromWebContents(event.sender) instead of
+  // BrowserWindow.getFocusedWindow() — the focused window is unreliable when
+  // a modal dialog is open or when multiple windows exist.  All other dialog
+  // handlers in this file follow this same pattern (OPEN_FOLDER_DIALOG,
+  // OPEN_FILE_DIALOG, SELECT_NEW_PROJECT_DIR, WRITE_EXPORT_FILE, …).
   ipcMain.handle(
     IPC_CHANNELS.SELECT_EXPORT_DIR,
-    async (_event): Promise<SelectExportDirResult> => {
+    async (event): Promise<SelectExportDirResult> => {
       console.log("[ipc] SELECT_EXPORT_DIR: opening folder picker");
-      const win = BrowserWindow.getFocusedWindow();
-      const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0]!, {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const opts = {
         title: "Choose export directory",
-        properties: ["openDirectory", "createDirectory"],
-      });
+        properties: ["openDirectory", "createDirectory"] as ("openDirectory" | "createDirectory")[],
+      };
+      const result = win
+        ? await dialog.showOpenDialog(win, opts)
+        : await dialog.showOpenDialog(opts);
       const dirPath = result.canceled || result.filePaths.length === 0
         ? null
         : result.filePaths[0]!;

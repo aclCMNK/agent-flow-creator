@@ -103,6 +103,25 @@ export const SubagentDeclSchema = z.object({
 
 // ── .adata root schema ─────────────────────────────────────────────────────
 
+/**
+ * Zod permission value: one of "allow" | "deny" | "ask".
+ */
+const permissionValueSchema = z.enum(["allow", "deny", "ask"]);
+
+/**
+ * The permissions object stored at the top level of each .adata file.
+ *
+ * Shape:
+ *   {
+ *     "ungroupedPerm": "allow" | "deny" | "ask",
+ *     "GroupName": { "perm": "allow" | "deny" | "ask", ... }
+ *   }
+ */
+const permissionsObjectSchema = z.record(
+  z.string(),
+  z.union([permissionValueSchema, z.record(z.string(), permissionValueSchema)])
+);
+
 export const AdataSchema = z.object({
   /** Schema version for migration support */
   version: z.number().int().positive().default(1),
@@ -135,6 +154,13 @@ export const AdataSchema = z.object({
     ),
   /** Free-form agent-level metadata */
   metadata: z.record(z.string(), z.string()).default({}),
+  /**
+   * Permissions object (managed by ADATA_SET_PERMISSIONS handler).
+   * Optional — absent for agents with no permissions configured.
+   *
+   * Shape: { "ungroupedPerm": "allow"|"deny"|"ask", "GroupName": { "perm": "allow"|... } }
+   */
+  permissions: permissionsObjectSchema.optional(),
   /** ISO 8601 creation timestamp */
   createdAt: z.iso.datetime(),
   /** ISO 8601 last-modified timestamp */

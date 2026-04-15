@@ -1,0 +1,275 @@
+════════════════════════════════════════════════════════════════════════════════
+EXPLORATION SUMMARY: Metadata Loss in Save Agent Graph
+════════════════════════════════════════════════════════════════════════════════
+
+PROBLEM STATEMENT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+When users click the global "Save" button (top-right), metadata (permissions, 
+skills, aspects) of agents is lost from .adata files, particularly the 
+orchestrator. This happens after:
+  1. User defines permissions in the Permissions Modal (separate IPC call ✅)
+  2. User edits agent properties (name, type, etc.) in the canvas
+  3. User clicks "Save" global button → permissions are gone ❌
+
+════════════════════════════════════════════════════════════════════════════════
+
+ROOT CAUSE: Code Path Analysis
+════════════════════════════════════════════════════════════════════════════════
+
+Flow: [Save Button] → [AgentGraphSaveButton.tsx] → [IPC: SAVE_AGENT_GRAPH] → 
+      [ipc-handlers.ts] → [.adata file written]
+
+STEP 1: Serialization Gap (AgentGraphSaveButton.tsx:78-87)
+  Current: Serializes only 8 fields
+    - id, name, description, type, isOrchestrator, hidden, x, y
+  Missing: permissions, skills, aspects, metadata
+  Status: ❌ INCOMPLETE
+
+STEP 2: IPC Handler (ipc-handlers.ts:613-793)
+  Good: Lines 716-724 read existing .adata from disk
+  Good: Lines 731-740 preserve aspects, skills, subagents, profile
+  Bad: Line 741-750 preserves metadata but SKIPS permissions
+  Missing: No line `permissions: (existing.permissions as Record<string, unknown>) ?? undefined,`
+
+STEP 3: Disk Write (ipc-handlers.ts:752)
+  Result: .adata file written WITHOUT permissions field
+  Status: ❌ CRITICAL
+
+════════════════════════════════════════════════════════════════════════════════
+
+CRITICAL CODE LOCATIONS
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 1: src/electron/ipc-handlers.ts (MOST CRITICAL)
+  Lines 613-793: SAVE_AGENT_GRAPH handler
+  Lines 716-724: Read existing .adata ✅
+  Lines 726-750: Build new .adata object ❌
+    Line 731: aspects: (existing.aspects as unknown[]) ?? []
+    Line 732: skills: (existing.skills as unknown[]) ?? []
+    Line 733: subagents: (existing.subagents as unknown[]) ?? []
+    Line 734: ❌ MISSING: permissions preservation
+    Line 740: profile: (existing.profile as unknown[]) ?? []
+    Line 741-750: metadata preservation ✅
+  Line 752: await atomicWriteJson(adataPath, adata);
+
+  The adata object literal should include:
+    permissions: (existing.permissions as Record<string, unknown>) ?? undefined,
+
+FILE 2: src/ui/components/AgentGraphSaveButton.tsx (SECONDARY)
+  Lines 78-87: AgentGraphNode serialization
+  Missing all metadata fields (but this is UI layer, acceptable)
+  The real issue is the IPC handler not using bridge to fetch metadata
+
+FILE 3: src/electron/permissions-handlers.ts (ROOT CAUSE: Architecture)
+  Lines 103-116: readPermissionsFromDisk (read-only)
+  Lines 124-145: writePermissionsToDisk (write-only)
+  Status: Completely separate IPC channel (ADATA_SET_PERMISSIONS)
+  Problem: No coordination with SAVE_AGENT_GRAPH
+
+════════════════════════════════════════════════════════════════════════════════
+
+FAILURE SCENARIO (Detailed)
+════════════════════════════════════════════════════════════════════════════════
+
+Disk State Before:
+  metadata/orchestrator-uuid.adata:
+  {
+    "agentId": "orch-uuid",
+    "agentName": "orchestrator",
+    "permissions": { "Bash": { "run": "allow" } },  ← Set by permissions modal
+    "skills": [...],
+    "aspects": [...],
+    "createdAt": "2026-04-01T...",
+    "updatedAt": "2026-04-01T..."
+  }
+
+User Action 1: Open Permissions Modal → Set Bash.run=allow → Save
+  Result: .adata updated with permissions ✅
+
+User Action 2: Click agent on canvas → Edit name → Click global "Save"
+  Serialization sends:
+  {
+    id: "orch-uuid",
+    name: "new-name",
+    description: "...",
+    type: "Agent",
+    isOrchestrator: true,
+    hidden: false,
+    x: 100,
+    y: 200
+    // ❌ NO permissions field
+  }
+
+Handler reads existing .adata:
+  existing = {
+    agentId: "orch-uuid",
+    permissions: { "Bash": { "run": "allow" } },  ← Still there!
+    ...
+  }
+
+Handler constructs new .adata:
+  adata = {
+    version: 1,
+    agentId: "orch-uuid",
+    agentName: "new-name",
+    description: "...",
+    aspects: (existing.aspects as unknown[]) ?? [],   // ✅ Preserved
+    skills: (existing.skills as unknown[]) ?? [],     // ✅ Preserved
+    subagents: (existing.subagents as unknown[]) ?? [], // ✅ Preserved
+    profile: (existing.profile as unknown[]) ?? [],   // ✅ Preserved
+    metadata: { ...existing.metadata, ... },         // ✅ Preserved
+    // ❌ MISSING: permissions not included here
+    createdAt: existing.createdAt,
+    updatedAt: now
+  }
+
+Handler writes .adata:
+  await atomicWriteJson(adataPath, adata);
+
+Disk State After:
+  metadata/orchestrator-uuid.adata:
+  {
+    "agentId": "orch-uuid",
+    "agentName": "new-name",
+    "permissions": undefined  // ❌ LOST!
+    // File now has NO permissions key
+  }
+
+════════════════════════════════════════════════════════════════════════════════
+
+IMPACT ASSESSMENT
+════════════════════════════════════════════════════════════════════════════════
+
+Severity: 🔴 CRITICAL
+  - Affects most critical component (orchestrator)
+  - Permissions control what agents can do (Bash, file access, etc.)
+  - User has no warning that permissions were lost
+  - Data is silently overwritten
+
+Likelihood: 🟡 MEDIUM
+  - Only happens if:
+    1. User defines permissions (not always done)
+    2. User edits agent after that
+    3. User clicks Save (happens frequently)
+  - Three-step scenario but common workflow
+
+Scope: HIGH
+  - Affects ANY agent with permissions defined
+  - Especially dangerous for orchestrator
+  - Skills and aspects may also be at risk (not tested)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Risk Matrix: Severity(HIGH) × Likelihood(MEDIUM) × Scope(HIGH) = 🔴 CRITICAL FIX
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+════════════════════════════════════════════════════════════════════════════════
+
+RECOMMENDED FIX
+════════════════════════════════════════════════════════════════════════════════
+
+ONE-LINE FIX (src/electron/ipc-handlers.ts, around line 741):
+
+  Current (lines 726-750):
+    const adata: Record<string, unknown> = {
+      version: 1,
+      agentId: node.id,
+      agentName: node.name,
+      description: node.description,
+      aspects: (existing.aspects as unknown[]) ?? [],
+      skills: (existing.skills as unknown[]) ?? [],
+      subagents: (existing.subagents as unknown[]) ?? [],
+      profilePath: ...,
+      profile: (existing.profile as unknown[]) ?? [],
+      metadata: {
+        ...((existing.metadata as Record<string, unknown>) ?? {}),
+        agentType: node.type,
+        isOrchestrator: String(node.isOrchestrator),
+        hidden: node.type === "Sub-Agent" ? String(node.hidden) : "false",
+      },
+      createdAt: (existing.createdAt as string) ?? now,
+      updatedAt: now,
+    };
+
+  Fixed:
+    const adata: Record<string, unknown> = {
+      version: 1,
+      agentId: node.id,
+      agentName: node.name,
+      description: node.description,
+      aspects: (existing.aspects as unknown[]) ?? [],
+      skills: (existing.skills as unknown[]) ?? [],
+      subagents: (existing.subagents as unknown[]) ?? [],
+      permissions: (existing.permissions as Record<string, unknown>) ?? undefined,  // ← ADD THIS
+      profilePath: ...,
+      profile: (existing.profile as unknown[]) ?? [],
+      metadata: {
+        ...((existing.metadata as Record<string, unknown>) ?? {}),
+        agentType: node.type,
+        isOrchestrator: String(node.isOrchestrator),
+        hidden: node.type === "Sub-Agent" ? String(node.hidden) : "false",
+      },
+      createdAt: (existing.createdAt as string) ?? now,
+      updatedAt: now,
+    };
+
+════════════════════════════════════════════════════════════════════════════════
+
+VERIFICATION TEST NEEDED
+════════════════════════════════════════════════════════════════════════════════
+
+Create integration test: save-agent-graph-preserves-permissions.test.ts
+
+  1. Create .adata with permissions: { Bash: { run: "allow" } }
+  2. Call saveAgentGraph with modified agent (edit description)
+  3. Read .adata from disk
+  4. Assert: permissions still exist and are unchanged ✅
+
+Same test for skills and aspects to verify they're preserved.
+
+════════════════════════════════════════════════════════════════════════════════
+
+AUDIT RECOMMENDATIONS
+════════════════════════════════════════════════════════════════════════════════
+
+1. Add logging after line 752:
+   if (existing.permissions && !adata.permissions) {
+     console.warn(`[AUDIT] Agent ${node.id}: permissions were lost during save`);
+   }
+
+2. Add similar checks for skills, aspects, profile
+
+3. Add pre-save validation:
+   - Before overwriting, verify all fields are preserved
+   - Log warnings for any fields that are about to be lost
+
+4. Consider adding a checksum or hash of metadata to detect corruption
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILES REFERENCED
+════════════════════════════════════════════════════════════════════════════════
+
+src/ui/components/AgentGraphSaveButton.tsx
+src/ui/store/agentFlowStore.ts
+src/ui/store/projectStore.ts
+src/electron/ipc-handlers.ts (CRITICAL)
+src/electron/permissions-handlers.ts
+src/electron/skills-handlers.ts
+src/electron/bridge.types.ts
+src/schemas/adata.schema.ts
+tests/loader/fixtures/valid-agent-a1b2.adata
+tests/ui/export-modal.test.ts
+
+════════════════════════════════════════════════════════════════════════════════
+
+SUMMARY
+════════════════════════════════════════════════════════════════════════════════
+
+✅ Identified exact location: ipc-handlers.ts:741-750
+✅ Root cause: Missing one line in adata object literal
+✅ Impact: CRITICAL (orchestrator loses permissions)
+✅ Fix: One-line addition to preserve existing.permissions
+✅ Prevention: Integration test + audit logging
+✅ Recommendation: Immediate fix recommended; test coverage critical
+
+════════════════════════════════════════════════════════════════════════════════
