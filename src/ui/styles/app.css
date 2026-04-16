@@ -130,8 +130,9 @@ button:disabled {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	padding: 48px 24px;
-	gap: 32px;
+	justify-content: center;
+	padding: 24px 24px 32px;
+	gap: 24px;
 	max-width: 720px;
 	margin: 0 auto;
 	width: 100%;
@@ -191,6 +192,14 @@ button:disabled {
 	width: 100%;
 }
 
+.project-browser__actions-row {
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	gap: 1rem;
+}
+
 .project-browser__hint {
 	color: var(--color-text-muted);
 	font-size: 0.875rem;
@@ -201,9 +210,9 @@ button:disabled {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	padding: 10px 20px;
+	padding: 7px 16px;
 	border-radius: var(--radius-md);
-	font-size: 0.9rem;
+	font-size: 0.875rem;
 	font-weight: 500;
 	transition: background var(--transition), opacity var(--transition);
 }
@@ -211,8 +220,8 @@ button:disabled {
 .project-browser__btn--primary {
 	background: var(--color-primary);
 	color: white;
-	padding: 12px 28px;
-	font-size: 1rem;
+	padding: 8px 22px;
+	font-size: 0.9rem;
 }
 
 .project-browser__btn--primary:hover:not(:disabled) {
@@ -245,34 +254,36 @@ button:disabled {
 }
 
 .project-browser__recents-title {
-	font-size: 0.8rem;
+	font-size: 0.72rem;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
-	color: var(--color-text-muted);
-	margin-bottom: 12px;
+	color: var(--color-text-dim);
+	margin-bottom: 6px;
 }
 
 .project-browser__recents-list {
 	list-style: none;
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 4px;
 }
 
 .project-browser__recent-item {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 16px;
-	background: var(--color-surface);
+	gap: 12px;
+	background: transparent;
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius-md);
-	padding: 12px 16px;
-	transition: border-color var(--transition);
+	padding: 7px 12px;
+	transition: border-color var(--transition), background var(--transition);
+	opacity: 0.75;
 }
 
 .project-browser__recent-item:hover {
 	border-color: var(--color-primary);
+	opacity: 1;
 }
 
 .project-browser__recent-info {
@@ -283,8 +294,9 @@ button:disabled {
 }
 
 .project-browser__recent-name {
-	font-weight: 600;
-	color: var(--color-text);
+	font-weight: 500;
+	font-size: 0.875rem;
+	color: var(--color-text-muted);
 }
 
 .project-browser__recent-path {

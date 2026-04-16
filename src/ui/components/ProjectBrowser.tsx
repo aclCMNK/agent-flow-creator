@@ -49,7 +49,7 @@ export function ProjectBrowser() {
         <img
           src={logoEditorSvg}
           alt="AgentsFlow logo"
-          style={{ display: "block", maxWidth: "350px", width: "100%", margin: "0 auto 2rem auto" }}
+          style={{ display: "block", maxWidth: "320px", width: "100%", margin: "0 auto 1rem auto" }}
         />
       </header>
 
@@ -70,35 +70,37 @@ export function ProjectBrowser() {
 
       {/* ── Actions ────────────────────────────────────────────────── */}
       <section className="project-browser__actions" aria-label="Project actions">
-        {/* NEW: Create new project */}
-        <button
-          className="project-browser__btn project-browser__btn--primary"
-          onClick={() => setShowNewProjectModal(true)}
-          disabled={isBusy}
-        >
-          <span aria-hidden="true">✨</span>
-          New Project
-        </button>
+        <div className="project-browser__actions-row">
+          {/* NEW: Create new project */}
+          <button
+            className="project-browser__btn project-browser__btn--primary"
+            onClick={() => setShowNewProjectModal(true)}
+            disabled={isBusy}
+          >
+            <span aria-hidden="true">✨</span>
+            New Project
+          </button>
 
-        {/* Open existing project */}
-        <button
-          className="project-browser__btn project-browser__btn--secondary"
-          onClick={openProjectDialog}
-          disabled={isBusy}
-          aria-busy={isLoading}
-        >
-          {isLoading ? (
-            <>
-              <span className="project-browser__spinner" aria-hidden="true" />
-              Opening…
-            </>
-          ) : (
-            <>
-              <span aria-hidden="true">📂</span>
-              Open Project Folder
-            </>
-          )}
-        </button>
+          {/* Open existing project */}
+          <button
+            className="project-browser__btn project-browser__btn--secondary"
+            onClick={openProjectDialog}
+            disabled={isBusy}
+            aria-busy={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <span className="project-browser__spinner" aria-hidden="true" />
+                Opening…
+              </>
+            ) : (
+              <>
+                <span aria-hidden="true">📂</span>
+                Open Project Folder
+              </>
+            )}
+          </button>
+        </div>
 
         <p className="project-browser__hint">
           Select the root folder of an existing{" "}
