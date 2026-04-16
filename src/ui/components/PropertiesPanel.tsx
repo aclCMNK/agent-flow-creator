@@ -771,21 +771,17 @@ function TemperatureField({ agentId }: TemperatureFieldProps) {
               {OPENCODE_HIDDEN_TOOLTIP_TEXT}
             </div>
           )}
-          <button
-            id="opencode-hidden-toggle"
-            type="button"
-            className={[
-              "opencode-hidden-field__toggle",
-              hidden
-                ? "opencode-hidden-field__toggle--on"
-                : "opencode-hidden-field__toggle--off",
-            ].join(" ")}
-            onClick={handleHiddenToggle}
-            aria-pressed={hidden}
-            aria-label={hidden ? "Hidden: true" : "Hidden: false"}
-          >
-            {hidden ? OPENCODE_HIDDEN_LABEL_TRUE : OPENCODE_HIDDEN_LABEL_FALSE}
-          </button>
+          <span className="agent-hidden-toggle__track">
+            <input
+              id="opencode-hidden-toggle"
+              type="checkbox"
+              className="agent-hidden-toggle__input"
+              checked={hidden}
+              onChange={() => handleHiddenToggle()}
+              aria-label={hidden ? "Hidden: true" : "Hidden: false"}
+            />
+            <span className="agent-hidden-toggle__thumb" aria-hidden="true" />
+          </span>
         </div>
       )}
 
