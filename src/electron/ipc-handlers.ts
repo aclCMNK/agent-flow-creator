@@ -28,6 +28,7 @@ import type { LoadResult, ProjectModel, AgentModel } from "../loader/types.ts";
 
 import { IPC_CHANNELS } from "./bridge.types.ts";
 import { buildAdataFromExisting } from "./adata-builder.ts";
+import { backupExportFileIfExists } from "./export-file-backup.ts";
 import type {
   BridgeLoadResult,
   SerializableProjectModel,
@@ -1426,8 +1427,15 @@ export function registerIpcHandlers(): void {
     async (_event, req: WriteExportFileRequest): Promise<WriteExportFileResult> => {
       console.log("[ipc] WRITE_EXPORT_FILE: dest →", req.destDir, "file →", req.fileName);
       try {
-        const fullPath = join(req.destDir, req.fileName);
         await mkdir(req.destDir, { recursive: true });
+
+        // ── Backup existing file BEFORE overwriting ─────────────────────
+        const backupResult = await backupExportFileIfExists(req.destDir, req.fileName);
+        if (backupResult.backedUp) {
+          console.log("[ipc] WRITE_EXPORT_FILE: backup created →", backupResult.backupPath);
+        }
+
+        const fullPath = join(req.destDir, req.fileName);
         await writeFile(fullPath, req.content, "utf-8");
         console.log("[ipc] WRITE_EXPORT_FILE: written to", fullPath);
         return { success: true, filePath: fullPath };

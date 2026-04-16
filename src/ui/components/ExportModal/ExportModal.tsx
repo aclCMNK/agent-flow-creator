@@ -127,8 +127,8 @@ import {
   EXPORT_ADAPTER_LABELS,
   makeDefaultOpenCodeConfig,
   getOpenCodeOutputFileName,
-  buildOpenCodeConfig,
-  serializeOpenCodeOutput,
+  buildOpenCodeV2Config,
+  serializeOpenCodeV2Output,
   isOpenCodeConfigValid,
   validatePlugins,
   getAgentRelations,
@@ -599,8 +599,8 @@ export function ExportModal({
         },
       }));
 
-      const output = buildOpenCodeConfig(enriched, connections, config);
-      const content = serializeOpenCodeOutput(output, config.fileExtension);
+      const output = buildOpenCodeV2Config(enriched, config, project.name);
+      const content = serializeOpenCodeV2Output(output, config.fileExtension);
 
       const writeResult = await bridge.writeExportFile({
         destDir: exportDir,

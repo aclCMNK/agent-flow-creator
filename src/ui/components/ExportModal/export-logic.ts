@@ -496,3 +496,244 @@ export const EXPORT_ADAPTER_LABELS: Record<ExportAdapterId, string> = {
 
 /** All available adapter IDs */
 export const EXPORT_ADAPTER_IDS: ExportAdapterId[] = ["opencode"];
+
+// ── OpenCode V2 output shape ───────────────────────────────────────────────
+//
+// The V2 format uses the opencode.json structure expected by OpenCode ≥1.x:
+//
+//   {
+//     "$schema":      "...",
+//     "default_agent": "<agentName>",
+//     "autoupdate":   true,
+//     "watcher":      { "ignore": [...] },
+//     "plugin":       [...strings...],
+//     "mcp":          {},
+//     "agent": {
+//       "<agentName>": {
+//         "enabled":     true,
+//         "mode":        "primary" | "subagent",
+//         "prompt":      "{file:./prompts/[project]/[agentName].md}",
+//         "model":       "<provider/model>",
+//         "description": "...",
+//         "temperature": <number>,
+//         "step":        <number>,
+//         "permission":  { ... },
+//         "color":       "<hex>"
+//       }
+//     }
+//   }
+//
+// Rules:
+//   - ALL fields must always be present — no optional omissions.
+//   - agentName key and .md filename are VERBATIM from .adata (no slugification).
+//   - mode = agentType "Agent"→"primary", "Sub-Agent"→"subagent"
+//   - prompt uses "prompts" (plural) directory
+//   - model is "<provider>/<model>" in lowercase
+//   - step defaults to 7 when missing or null
+//   - permission is {} when agent has no permissions
+//   - If any required source field is absent, buildOpenCodeV2Config throws
+
+/** Watcher ignore patterns always included in V2 output */
+export const OPENCODE_V2_WATCHER_IGNORE = [
+  "node_modules/**",
+  "dist/**",
+  ".git/**",
+] as const;
+
+/**
+ * The exact shape of one agent's entry in the OpenCode V2 config.
+ *
+ * ALL fields are required — none may be omitted.
+ * hidden is always present: true when opencode.hidden===true in .adata, false otherwise.
+ */
+export interface OpenCodeV2AgentEntry {
+  enabled: true;
+  hidden: boolean;
+  mode: "primary" | "subagent";
+  prompt: string;
+  model: string;
+  description: string;
+  temperature: number;
+  step: number;
+  permission: PermissionsObject | Record<string, never>;
+  color: string;
+}
+
+/** The full shape of the generated OpenCode V2 config JSON */
+export interface OpenCodeV2Output {
+  $schema: string;
+  default_agent: string;
+  autoupdate: boolean;
+  watcher: { ignore: string[] };
+  plugin: string[];
+  mcp: Record<string, unknown>;
+  agent: Record<string, OpenCodeV2AgentEntry>;
+}
+
+/**
+ * Builds the OpenCode V2 JSON entry for a single agent.
+ *
+ * All fields are always present. Defaults are applied for missing optional
+ * source values (temperature→0.05, step→7, color→#ffffff, permission→{}).
+ *
+ * agentName is verbatim from agent.name — NOT slugified.
+ * prompt path uses "prompts" (plural) and verbatim project/agent names.
+ * model is "<provider>/<model>" in lowercase.
+ * mode is derived from agentType: "Agent"→"primary", "Sub-Agent"→"subagent".
+ *
+ * @throws Error if agent.name is empty (cannot build a valid key)
+ */
+export function buildOpenCodeV2AgentEntry(
+  agent: AgentExportSnapshot,
+  projectName: string,
+): Record<string, OpenCodeV2AgentEntry> {
+  const agentName = agent.name;
+  if (!agentName) {
+    throw new Error(`Agent ID "${agent.id}" has an empty agentName — cannot build V2 config entry.`);
+  }
+
+  // ── mode — derived from agentType (not isOrchestrator) ────────────────
+  const mode: "primary" | "subagent" =
+    agent.agentType === "Agent" ? "primary" : "subagent";
+
+  // ── prompt — verbatim names, "prompts" directory (plural) ─────────────
+  const prompt = `{file:./prompts/${projectName.toLowerCase()}/${agentName}.md}`;
+
+  // ── opencode config from adataProperties ──────────────────────────────
+  const ocConfig = agent.adataProperties?.opencode as Record<string, unknown> | undefined;
+
+  const provider = typeof ocConfig?.provider === "string" ? ocConfig.provider : "";
+  const model    = typeof ocConfig?.model    === "string" ? ocConfig.model    : "";
+  const combined = provider && model ? `${provider}/${model}` : model || provider || "";
+  const modelStr = combined.toLowerCase();
+
+  const temperature =
+    typeof ocConfig?.temperature === "number" && isFinite(ocConfig.temperature)
+      ? ocConfig.temperature
+      : 0.05;
+
+  const rawSteps = ocConfig?.steps;
+  const step: number =
+    typeof rawSteps === "number" && isFinite(rawSteps)
+      ? rawSteps
+      : 7;
+
+  const color =
+    typeof ocConfig?.color === "string" && ocConfig.color
+      ? ocConfig.color
+      : "#ffffff";
+
+  // ── permission — always present, even when empty ───────────────────────
+  const rawPerms = agent.adataProperties?.permissions;
+  const permission: PermissionsObject | Record<string, never> =
+    rawPerms && typeof rawPerms === "object" && !Array.isArray(rawPerms)
+      ? (rawPerms as PermissionsObject)
+      : {};
+
+  // ── hidden — always present; true only when opencode.hidden === true ────
+  const hidden: boolean = ocConfig?.hidden === true;
+
+  const entry: OpenCodeV2AgentEntry = {
+    enabled: true,
+    hidden,
+    mode,
+    prompt,
+    model: modelStr,
+    description: agent.description,
+    temperature,
+    step,
+    permission,
+    color,
+  };
+
+  return { [agentName]: entry };
+}
+
+/**
+ * Builds an OpenCode V2 configuration object.
+ *
+ * ALL top-level fields are always present.
+ * - $schema defaults to "https://opencode.ai/config.json" when schemaUrl is empty.
+ * - default_agent is the verbatim name of the selected agent, or "" if none.
+ * - plugin is the list of non-empty plugin paths.
+ * - mcp is always {}.
+ * - watcher is always { ignore: OPENCODE_V2_WATCHER_IGNORE }.
+ *
+ * Agent inclusion rules (BOTH must be satisfied):
+ *   1. The agent has non-empty opencode.provider AND opencode.model in .adata.
+ *   2. mdFileExists(projectName, agentName) returns true.
+ *
+ * @param agents         - All agent snapshots
+ * @param config         - Export configuration
+ * @param projectName    - Verbatim project name (folder is lowercased internally)
+ * @param mdFileExists   - Optional predicate: (projectName, agentName) => boolean.
+ *                         Defaults to () => true. Pass a real filesystem check in
+ *                         production; pass a stub in tests.
+ *
+ * @throws Error if any included agent has an empty name (see buildOpenCodeV2AgentEntry).
+ */
+export function buildOpenCodeV2Config(
+  agents: AgentExportSnapshot[],
+  config: OpenCodeExportConfig,
+  projectName: string,
+  mdFileExists: (projectName: string, agentName: string) => boolean = () => true,
+): OpenCodeV2Output {
+  // ── agent inclusion filter ─────────────────────────────────────────────
+  const includedAgents = agents.filter((agent) => {
+    // Rule 1: must have both provider and model defined (non-empty strings)
+    const ocConfig = agent.adataProperties?.opencode as Record<string, unknown> | undefined;
+    const provider = typeof ocConfig?.provider === "string" ? ocConfig.provider.trim() : "";
+    const model    = typeof ocConfig?.model    === "string" ? ocConfig.model.trim()    : "";
+    if (!provider || !model) return false;
+
+    // Rule 2: the .md profile file must exist
+    if (!mdFileExists(projectName, agent.name)) return false;
+
+    return true;
+  });
+
+  // default_agent — verbatim name from the selected agent
+  let default_agent = "";
+  if (config.defaultAgentId) {
+    const defaultAgent = agents.find((a) => a.id === config.defaultAgentId);
+    if (defaultAgent) {
+      default_agent = defaultAgent.name;
+    }
+  }
+
+  // plugin — non-empty paths only
+  const plugin = config.plugins
+    .map((p) => p.path.trim())
+    .filter((p) => p.length > 0);
+
+  // agent object — keyed by verbatim agentName, only included agents
+  const agentObj: Record<string, OpenCodeV2AgentEntry> = {};
+  for (const agent of includedAgents) {
+    const entry = buildOpenCodeV2AgentEntry(agent, projectName);
+    Object.assign(agentObj, entry);
+  }
+
+  return {
+    $schema:       config.schemaUrl.trim() || OPENCODE_SCHEMA_URL_DEFAULT,
+    default_agent,
+    autoupdate:    config.autoUpdate,
+    watcher:       { ignore: [...OPENCODE_V2_WATCHER_IGNORE] },
+    plugin,
+    mcp:           {},
+    agent:         agentObj,
+  };
+}
+
+/**
+ * Serializes the OpenCode V2 output to a formatted JSON string.
+ *
+ * Both "json" and "jsonc" use the same serialization — jsonc has a
+ * different file extension but the same content (no embedded comments).
+ */
+export function serializeOpenCodeV2Output(
+  output: OpenCodeV2Output,
+  extension: "json" | "jsonc",
+): string {
+  void extension;
+  return JSON.stringify(output, null, 2);
+}
