@@ -17,6 +17,7 @@ import {
   normalisePermissions,
   handleGetPermissions,
   handleSetPermissions,
+  handleSyncTasks,
 } from "../../src/electron/permissions-handlers.ts";
 import type { PermissionsObject } from "../../src/electron/bridge.types.ts";
 import { join } from "node:path";
@@ -408,6 +409,194 @@ describe("permissions serialization format", () => {
       const bash = stored["Bash"] as Record<string, unknown>;
       expect(bash["run-scripts"]).toBe("allow");
       expect(bash["write-files"]).toBe("deny");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── handleSyncTasks ─────────────────────────────────────────────────────────
+
+describe("handleSyncTasks — basic scenarios", () => {
+  it("writes permissions.task as an object (name→allow) for a single delegator, preserving other fields", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "sync-tasks-test-"));
+    try {
+      const metaDir = join(tmpDir, "metadata");
+      await mkdir(metaDir, { recursive: true });
+
+      const agentId = "agent-001";
+      const adataPath = join(metaDir, `${agentId}.adata`);
+      const initial = {
+        agentName: "Alpha",
+        description: "Test agent",
+        permissions: { read: "allow", custom: true },
+        someOtherField: "keep-me",
+      };
+      await writeFile(adataPath, JSON.stringify(initial), "utf-8");
+
+      const result = await handleSyncTasks({
+        projectDir: tmpDir,
+        entries: [{ agentId, taskAgentNames: ["Beta", "Gamma"] }],
+      });
+
+      expect(result.updated).toBe(1);
+      expect(result.errors).toHaveLength(0);
+
+      const stored = JSON.parse(await readFile(adataPath, "utf-8")) as Record<string, unknown>;
+
+      // permissions.task must be an object with agent names as keys
+      const perms = stored.permissions as Record<string, unknown>;
+      expect(perms.task).toEqual({ Beta: "allow", Gamma: "allow" });
+      // Other permissions keys preserved
+      expect(perms.read).toBe("allow");
+      expect(perms.custom).toBe(true);
+      // Other top-level fields preserved
+      expect(stored.agentName).toBe("Alpha");
+      expect(stored.someOtherField).toBe("keep-me");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves a previous non-default value when an agent remains delegated", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "sync-tasks-preserve-"));
+    try {
+      const metaDir = join(tmpDir, "metadata");
+      await mkdir(metaDir, { recursive: true });
+
+      const agentId = "agent-preserv";
+      const adataPath = join(metaDir, `${agentId}.adata`);
+      const initial = {
+        agentName: "Orchestrator",
+        permissions: {
+          task: { "Worker A": "deny", "Worker B": "allow", "Worker C": "allow" },
+        },
+      };
+      await writeFile(adataPath, JSON.stringify(initial), "utf-8");
+
+      // Worker C is removed; Worker A & B remain; Worker D is new
+      const result = await handleSyncTasks({
+        projectDir: tmpDir,
+        entries: [{ agentId, taskAgentNames: ["Worker A", "Worker B", "Worker D"] }],
+      });
+
+      expect(result.updated).toBe(1);
+      const stored = JSON.parse(await readFile(adataPath, "utf-8")) as Record<string, unknown>;
+      const task = (stored.permissions as Record<string, unknown>).task as Record<string, unknown>;
+
+      // Previous "deny" on Worker A is preserved
+      expect(task["Worker A"]).toBe("deny");
+      // Previous "allow" on Worker B is preserved
+      expect(task["Worker B"]).toBe("allow");
+      // New entry Worker D defaults to "allow"
+      expect(task["Worker D"]).toBe("allow");
+      // Worker C (no longer delegated) must NOT appear
+      expect("Worker C" in task).toBe(false);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns { updated: 0, errors: [] } for empty entries array (canvas has no links)", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "sync-tasks-empty-"));
+    try {
+      const result = await handleSyncTasks({ projectDir: tmpDir, entries: [] });
+      expect(result.updated).toBe(0);
+      expect(result.errors).toHaveLength(0);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("accumulates errors for missing .adata files without stopping the batch", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "sync-tasks-partial-"));
+    try {
+      const metaDir = join(tmpDir, "metadata");
+      await mkdir(metaDir, { recursive: true });
+
+      // Only agent-good exists on disk; agent-missing does not
+      const goodId = "agent-good";
+      const missingId = "agent-missing";
+      await writeFile(
+        join(metaDir, `${goodId}.adata`),
+        JSON.stringify({ agentName: "Good" }),
+        "utf-8",
+      );
+
+      const result = await handleSyncTasks({
+        projectDir: tmpDir,
+        entries: [
+          { agentId: missingId, taskAgentNames: ["X"] },
+          { agentId: goodId, taskAgentNames: ["Y"] },
+        ],
+      });
+
+      expect(result.updated).toBe(1);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain(missingId);
+
+      // The good agent was still updated with the correct object shape
+      const stored = JSON.parse(
+        await readFile(join(metaDir, `${goodId}.adata`), "utf-8"),
+      ) as Record<string, unknown>;
+      const perms = stored.permissions as Record<string, unknown>;
+      expect(perms.task).toEqual({ Y: "allow" });
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("accumulates errors for corrupt JSON without stopping the batch", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "sync-tasks-corrupt-"));
+    try {
+      const metaDir = join(tmpDir, "metadata");
+      await mkdir(metaDir, { recursive: true });
+
+      const corruptId = "agent-corrupt";
+      const goodId = "agent-good2";
+      await writeFile(join(metaDir, `${corruptId}.adata`), "{ INVALID JSON }", "utf-8");
+      await writeFile(join(metaDir, `${goodId}.adata`), JSON.stringify({ agentName: "Good2" }), "utf-8");
+
+      const result = await handleSyncTasks({
+        projectDir: tmpDir,
+        entries: [
+          { agentId: corruptId, taskAgentNames: ["Z"] },
+          { agentId: goodId, taskAgentNames: ["W"] },
+        ],
+      });
+
+      expect(result.updated).toBe(1);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain(corruptId);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("creates permissions object when .adata has none", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "sync-tasks-noperms-"));
+    try {
+      const metaDir = join(tmpDir, "metadata");
+      await mkdir(metaDir, { recursive: true });
+
+      const agentId = "no-perms";
+      await writeFile(
+        join(metaDir, `${agentId}.adata`),
+        JSON.stringify({ agentName: "NoPerms" }),
+        "utf-8",
+      );
+
+      const result = await handleSyncTasks({
+        projectDir: tmpDir,
+        entries: [{ agentId, taskAgentNames: ["Target One"] }],
+      });
+
+      expect(result.updated).toBe(1);
+      const stored = JSON.parse(
+        await readFile(join(metaDir, `${agentId}.adata`), "utf-8"),
+      ) as Record<string, unknown>;
+      // Must be an object, never an array
+      expect((stored.permissions as Record<string, unknown>).task).toEqual({ "Target One": "allow" });
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }

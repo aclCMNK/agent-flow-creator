@@ -1931,6 +1931,52 @@ button:disabled {
 	cursor: default;
 }
 
+/* "Sync Tasks" button in sidebar header */
+.editor-view__sync-tasks-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 10px;
+	border-radius: var(--radius-md);
+	font-size: 0.75rem;
+	font-weight: 600;
+	background: #7c3aed;          /* violet-600 */
+	color: #fff;
+	transition: background var(--transition), opacity var(--transition);
+	white-space: nowrap;
+	margin-left: 4px;
+}
+
+.editor-view__sync-tasks-btn:hover:not(:disabled) {
+	background: #6d28d9;          /* violet-700 */
+}
+
+.editor-view__sync-tasks-btn:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+/* Sync Tasks inline toast */
+.editor-view__sync-tasks-toast {
+	font-size: 0.78rem;
+	padding: 6px 10px;
+	border-radius: var(--radius-md);
+	margin: 4px 8px 0;
+	word-break: break-word;
+}
+
+.editor-view__sync-tasks-toast--success {
+	background: color-mix(in srgb, #22c55e 15%, transparent);
+	color: #15803d;
+	border: 1px solid #22c55e;
+}
+
+.editor-view__sync-tasks-toast--error {
+	background: color-mix(in srgb, #ef4444 15%, transparent);
+	color: #b91c1c;
+	border: 1px solid #ef4444;
+}
+
 /* Flow agent list (in sidebar) */
 .editor-view__flow-agent-list {
 	list-style: none;

@@ -69,6 +69,7 @@ import type {
   AdataGetPermissionsRequest,
   AdataSetPermissionsRequest,
   AdataListSkillsRequest,
+  SyncTasksRequest,
   RenameAgentFolderRequest,
   RenameAgentFolderResult,
   WriteExportFileRequest,
@@ -110,6 +111,7 @@ import {
 import {
   handleGetPermissions,
   handleSetPermissions,
+  handleSyncTasks,
 } from "./permissions-handlers.ts";
 import { handleListSkills } from "./skills-handlers.ts";
 import { handleRenameAgentFolder } from "./rename-agent-folder.ts";
@@ -1327,6 +1329,22 @@ export function registerIpcHandlers(): void {
   // ══════════════════════════════════════════════════════════════════════
   // Skills: scan {projectDir}/skills/ for SKILL.md files
   // ══════════════════════════════════════════════════════════════════════
+
+  // ── Sync Tasks — bulk-write permissions.task for delegator agents ──────
+  //
+  // Receives a list of { agentId, taskAgentIds } entries and writes ONLY the
+  // `task` key inside `permissions` for each agent's .adata file. All other
+  // .adata fields (and all other permission keys) are preserved via spread merge.
+  // Non-fatal: errors are accumulated per agent and returned in result.errors.
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_TASKS,
+    async (_event, req: SyncTasksRequest) => {
+      console.log("[ipc] SYNC_TASKS: entries →", req.entries.length);
+      const result = await handleSyncTasks(req);
+      console.log("[ipc] SYNC_TASKS: updated →", result.updated, "errors →", result.errors.length);
+      return result;
+    }
+  );
 
   // ── List skills ────────────────────────────────────────────────────────
   ipcMain.handle(

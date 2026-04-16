@@ -102,6 +102,16 @@ export interface AgentLink {
    * Can be empty.
    */
   ruleDetails: string;
+  /**
+   * Raw metadata from the persisted connection.
+   * `relationType` mirrors the original value stored in the .adata / .afproj file
+   * and is the authoritative source for the connection's semantic type.
+   * Only links where `metadata.relationType === "Delegation"` should contribute
+   * to `permissions.task`.
+   */
+  metadata: {
+    relationType: string;
+  };
 }
 
 /** A visual agent node placed on the canvas */
@@ -357,6 +367,17 @@ export interface AgentFlowActions {
    * No-op if no UserNode exists.
    */
   moveUserNode(x: number, y: number): void;
+  /**
+   * Compute the sync-tasks payload from the current `links[]` state and invoke
+   * `window.agentsFlow.syncTasks()` via IPC.
+   *
+   * Only agents with at least one outgoing link are included in the payload.
+   * Agents without outgoing links are NOT touched.
+   *
+   * @param projectDir  The project root directory (used to locate .adata files).
+   * @returns The SyncTasksResult from the main process.
+   */
+  syncTaskPermissions(projectDir: string): Promise<import("../../electron/bridge.types.ts").SyncTasksResult>;
 }
 
 export type AgentFlowStore = AgentFlowState & AgentFlowActions;
@@ -529,6 +550,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
         ruleType: "Delegation",
         delegationType: "Optional",
         ruleDetails: "",
+        metadata: { relationType: "Delegation" },
       };
       return { links: [...state.links, newLink], isDirty: true };
     });
@@ -655,6 +677,7 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
         ruleType,
         delegationType,
         ruleDetails: meta.ruleDetails ?? "",
+        metadata: { relationType: meta.relationType ?? "Delegation" },
       };
     });
 
@@ -718,5 +741,52 @@ export const useAgentFlowStore = create<AgentFlowStore>((set) => ({
       if (state.userNode === null) return {};
       return { userNode: { ...state.userNode, x, y }, isDirty: true };
     });
+  },
+
+  async syncTaskPermissions(projectDir) {
+    // Build payload: one entry per EVERY agent in the canvas.
+    //
+    // Lógica definitiva:
+    //   - Un agente recibe permissions.task SÓLO si tiene al menos un link
+    //     saliente con metadata.relationType === "Delegation".
+    //   - Links con relationType === "Response" (u otro valor) nunca contribuyen
+    //     a permissions.task — ni siquiera si ruleType coincide con "Delegation".
+    //   - Agentes SIN links de Delegation salientes reciben taskAgentNames:[]
+    //     → el handler escribe permissions.task:{} limpiando valores anteriores.
+    //
+    // Se incluyen TODOS los agentes para garantizar que agentes que perdieron
+    // sus links de Delegation queden con permissions.task:{} en disco.
+    const state = useAgentFlowStore.getState();
+    const { links, agents } = state;
+
+    // Build id→name lookup from the current agents list
+    const idToName = new Map<string, string>(agents.map((a) => [a.id, a.name]));
+
+    // Group: fromAgentId → Set of toAgentIds (Delegation only)
+    const delegationMap = new Map<string, Set<string>>();
+    for (const link of links) {
+      if (link.metadata?.relationType !== "Delegation") continue;
+      if (!delegationMap.has(link.fromAgentId)) {
+        delegationMap.set(link.fromAgentId, new Set());
+      }
+      delegationMap.get(link.fromAgentId)!.add(link.toAgentId);
+    }
+
+    // Build entries for ALL agents — delegators get their target names,
+    // non-delegators get [] which will result in permissions.task:{} on disk.
+    const entries = agents.map((agent) => {
+      const targets = delegationMap.get(agent.id);
+      return {
+        agentId: agent.id,
+        taskAgentNames: targets
+          ? Array.from(targets)
+              .map((id) => idToName.get(id))
+              .filter((name): name is string => name !== undefined)
+          : [],
+      };
+    });
+
+    // Invoke IPC
+    return window.agentsFlow.syncTasks({ projectDir, entries });
   },
 }));

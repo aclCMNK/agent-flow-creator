@@ -117,6 +117,40 @@ function EditorView() {
   const userNode = useAgentFlowStore((s) => s.userNode);
   const addUserNode = useAgentFlowStore((s) => s.addUserNode);
   const openExportModal = useAgentFlowStore((s) => s.openExportModal);
+  const syncTaskPermissions = useAgentFlowStore((s) => s.syncTaskPermissions);
+
+  // ── Sync Tasks state ─────────────────────────────────────────────────────
+  const [isSyncingTasks, setIsSyncingTasks] = useState(false);
+  const [syncTasksToast, setSyncTasksToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+
+  // Auto-dismiss sync toast after 3 s
+  useEffect(() => {
+    if (!syncTasksToast) return;
+    const t = setTimeout(() => setSyncTasksToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [syncTasksToast]);
+
+  async function handleSyncTasks() {
+    if (!project?.projectDir) return;
+    setIsSyncingTasks(true);
+    try {
+      const result = await syncTaskPermissions(project.projectDir);
+      if (result.errors.length === 0) {
+        setSyncTasksToast({ kind: "success", message: `${result.updated} agent(s) updated` });
+      } else if (result.updated > 0) {
+        setSyncTasksToast({
+          kind: "error",
+          message: `${result.updated} updated, ${result.errors.length} failed: ${result.errors.join("; ")}`,
+        });
+      } else {
+        setSyncTasksToast({ kind: "error", message: `Sync failed: ${result.errors.join("; ")}` });
+      }
+    } catch (err) {
+      setSyncTasksToast({ kind: "error", message: `Sync error: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setIsSyncingTasks(false);
+    }
+  }
 
   const issueCount = lastLoadResult?.issues.length ?? 0;
   const errorCount = lastLoadResult?.summary.errors ?? 0;
@@ -235,7 +269,28 @@ function EditorView() {
                 👤 User ✓
               </span>
             )}
+            {/* "Sync Tasks" button — writes permissions.task to .adata files */}
+            <button
+              className="editor-view__sync-tasks-btn"
+              onClick={handleSyncTasks}
+              disabled={isSyncingTasks || !project?.projectDir}
+              title="Sync task delegations from canvas links to .adata files"
+              aria-label="Sync Tasks"
+            >
+              {isSyncingTasks ? "⏳ Syncing…" : "⚡ Sync Tasks"}
+            </button>
           </div>
+
+          {/* ── Sync Tasks result toast ───────────────────────────── */}
+          {syncTasksToast && (
+            <div
+              className={`editor-view__sync-tasks-toast editor-view__sync-tasks-toast--${syncTasksToast.kind}`}
+              role="status"
+              aria-live="polite"
+            >
+              {syncTasksToast.kind === "success" ? "✅" : "⚠️"} {syncTasksToast.message}
+            </div>
+          )}
 
           {/* ── Flow agents list (canvas nodes, editable, selectable) ── */}
           {flowAgents.length > 0 ? (

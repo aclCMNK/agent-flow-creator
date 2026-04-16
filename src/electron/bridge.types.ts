@@ -403,6 +403,13 @@ export const IPC_CHANNELS = {
 
   // Renderer sends this back to main as the user's response to a conflict prompt.
   PROFILE_CONFLICT_RESPONSE: "profile-conflict:response",
+
+  // ── Sync Tasks channel ─────────────────────────────────────────────────────
+  //
+  // Writes `permissions.task` for each delegator agent in the payload.
+  // Only `permissions.task` is modified — all other .adata fields are preserved.
+  // Returns { updated: number, errors: string[] }.
+  SYNC_TASKS: "adata:sync-tasks",
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -1350,7 +1357,38 @@ export interface ExportProfileConflictResponse {
   /** Must match the promptId from ExportProfileConflictPrompt */
   promptId: string;
   /** User's chosen action */
-  action: ExportProfileConflictAction;
+   action: ExportProfileConflictAction;
+}
+
+// ── Sync Tasks ────────────────────────────────────────────────────────────────
+
+/**
+ * One entry in the sync-tasks payload: maps a delegator agent's .adata file
+ * (located at metadata/<agentId>.adata) to the real names of the agents it
+ * currently delegates to.
+ *
+ * The handler will write `permissions.task` as an object whose keys are the
+ * agent names and whose values are 'allow' (or the pre-existing value when the
+ * agent was already present).  Agents that are no longer delegated are removed.
+ */
+export interface SyncTasksEntry {
+  /** Agent ID (file: metadata/<agentId>.adata) */
+  agentId: string;
+  /** Real names (not IDs) of the currently-delegated target agents */
+  taskAgentNames: string[];
+}
+
+export interface SyncTasksRequest {
+  projectDir: string;
+  /** One entry per delegator agent. Agents with no outgoing links MUST NOT appear. */
+  entries: SyncTasksEntry[];
+}
+
+export interface SyncTasksResult {
+  /** Number of .adata files successfully updated */
+  updated: number;
+  /** Per-agent error messages for any that failed */
+  errors: string[];
 }
 
 export interface AgentsFlowBridge {
@@ -1706,6 +1744,17 @@ export interface AgentsFlowBridge {
     * The promptId must match the one received in the ExportProfileConflictPrompt.
     */
    respondProfileConflict(response: ExportProfileConflictResponse): void;
+
+  /**
+   * Writes `permissions.task` for each delegator agent described in the payload.
+   * Only the `task` key inside `permissions` is modified — all other .adata fields
+   * (and all other keys inside `permissions`) are preserved via partial merge.
+   *
+   * Returns SyncTasksResult: { updated, errors[] }.
+   * Errors are accumulated per-agent (non-fatal); the batch continues even if
+   * one agent fails.
+   */
+  syncTasks(req: SyncTasksRequest): Promise<SyncTasksResult>;
  }
 
  // ── Global type augmentation ──────────────────────────────────────────────

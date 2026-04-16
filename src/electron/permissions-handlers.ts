@@ -37,6 +37,8 @@ import type {
   AdataSetPermissionsResult,
   PermissionsObject,
   PermissionValue,
+  SyncTasksRequest,
+  SyncTasksResult,
 } from "./bridge.types.ts";
 
 // ── Normalisation ─────────────────────────────────────────────────────────
@@ -174,4 +176,82 @@ export async function handleSetPermissions(
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: message };
   }
+}
+
+// ── Sync Tasks handler ─────────────────────────────────────────────────────
+
+/**
+ * Bulk-updates only the `permissions.task` key for each delegator agent.
+ *
+ * `permissions.task` is ALWAYS written as an object:
+ *   - Keys   = real agent names from `entry.taskAgentNames`
+ *   - Values = 'allow' by default, OR the pre-existing value when the agent
+ *              was already present in the previous permissions.task object.
+ * Agents that are no longer delegated are removed (not carried forward).
+ * All other fields in `permissions` and in the .adata file are left untouched.
+ *
+ * Non-fatal: if one agent fails the others are still processed.
+ * Returns { updated, errors[] }.
+ */
+export async function handleSyncTasks(req: SyncTasksRequest): Promise<SyncTasksResult> {
+  let updated = 0;
+  const errors: string[] = [];
+
+  for (const entry of req.entries) {
+    const adataPath = join(req.projectDir, "metadata", `${entry.agentId}.adata`);
+    try {
+      let existing: Record<string, unknown> = {};
+      try {
+        const raw = await readFile(adataPath, "utf-8");
+        existing = JSON.parse(raw) as Record<string, unknown>;
+      } catch (readErr) {
+        const msg = readErr instanceof Error ? readErr.message : String(readErr);
+        errors.push(`${entry.agentId}: ${msg}`);
+        continue;
+      }
+
+      // Retrieve the previous permissions object (ignore if it's not an object)
+      const existingPermissions =
+        typeof existing.permissions === "object" &&
+        existing.permissions !== null &&
+        !Array.isArray(existing.permissions)
+          ? (existing.permissions as Record<string, unknown>)
+          : {};
+
+      // Retrieve the previous permissions.task object (ignore arrays / primitives)
+      const prevTask =
+        typeof existingPermissions.task === "object" &&
+        existingPermissions.task !== null &&
+        !Array.isArray(existingPermissions.task)
+          ? (existingPermissions.task as Record<string, unknown>)
+          : {};
+
+      // Build the new task object:
+      //   - Only currently-delegated agent names appear as keys
+      //   - Preserve the previous value when present; default to 'allow'
+      const newTask: Record<string, unknown> = {};
+      for (const name of entry.taskAgentNames) {
+        newTask[name] = name in prevTask ? prevTask[name] : "allow";
+      }
+
+      const updatedPermissions: Record<string, unknown> = {
+        ...existingPermissions,
+        task: newTask,
+      };
+
+      const updatedAdata: Record<string, unknown> = {
+        ...existing,
+        permissions: updatedPermissions,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await atomicWriteJson(adataPath, updatedAdata);
+      updated++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${entry.agentId}: ${msg}`);
+    }
+  }
+
+  return { updated, errors };
 }

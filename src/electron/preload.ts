@@ -101,6 +101,7 @@ import type {
   ExportAgentProfilesRequest,
   ExportProfileConflictPrompt,
   ExportProfileConflictResponse,
+  SyncTasksRequest,
   // ── Folder Explorer ───────────────────────────────────────────────────────
   FolderExplorerListRequest,
   FolderExplorerStatRequest,
@@ -393,6 +394,16 @@ const bridge: AgentsFlowBridge = {
 
   respondProfileConflict(response: ExportProfileConflictResponse) {
     ipcRenderer.send(IPC_CHANNELS.PROFILE_CONFLICT_RESPONSE, response);
+  },
+
+  // ── Sync Tasks ─────────────────────────────────────────────────────────────
+  //
+  // Bulk-writes permissions.task for delegator agents.
+  // Renderer passes a list of { agentId, taskAgentIds[] } entries.
+  // Returns { updated, errors[] }.
+
+  syncTasks(req: SyncTasksRequest) {
+    return ipcRenderer.invoke(IPC_CHANNELS.SYNC_TASKS, req);
   },
 };
 
