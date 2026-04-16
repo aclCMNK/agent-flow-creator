@@ -1,27 +1,27 @@
 /**
- * src/ui/components/ExportModal/SkillConflictDialog.tsx
+ * src/ui/components/ExportModal/ProfileConflictDialog.tsx
  *
- * Modal dialog displayed when a skill file already exists at the export
- * destination and the user must decide whether to overwrite it.
+ * Modal dialog displayed when an agent profile .md file already exists at the
+ * export destination and the user must decide whether to overwrite it.
  *
  * # Trigger
  *
- *   Rendered inline inside ExportModal when `skillConflictPrompt` is non-null.
+ *   Rendered inline inside ExportModal when `profileConflictPrompt` is non-null.
  *   The dialog is shown as an overlay above the modal during the unified
- *   handleExport flow (during skills export).
+ *   handleExport flow (after skills export completes).
  *
  * # Actions
  *
  *   Replace This  — replace only the current conflicting file, continue asking
  *   Replace All   — replace this file AND all remaining conflicts silently
- *   Cancel        — abort the entire skills export immediately
+ *   Cancel        — abort the entire profiles export immediately
  *
  * # Props
  *
  *   prompt    The conflict prompt received from the main process.
- *             Contains: promptId, skillName, fileName.
+ *             Contains: promptId, agentName, destinationPath.
  *   onAction  Called with the user's chosen action. Parent is responsible for
- *             forwarding the response to the main process via respondSkillConflict().
+ *             forwarding the response to the main process via respondProfileConflict().
  *
  * # Accessibility
  *
@@ -31,40 +31,43 @@
  */
 
 import React from "react";
-import type { ExportSkillsConflictPrompt, ExportSkillsConflictAction } from "../../../electron/bridge.types.ts";
+import type { ExportProfileConflictPrompt, ExportProfileConflictAction } from "../../../electron/bridge.types.ts";
 
 // ── Props ──────────────────────────────────────────────────────────────────
 
-export interface SkillConflictDialogProps {
+export interface ProfileConflictDialogProps {
   /** The conflict prompt sent by the main process. null = dialog hidden. */
-  prompt: ExportSkillsConflictPrompt | null;
+  prompt: ExportProfileConflictPrompt | null;
   /** Called when the user selects an action. */
-  onAction: (action: ExportSkillsConflictAction) => void;
+  onAction: (action: ExportProfileConflictAction) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export function SkillConflictDialog({ prompt, onAction }: SkillConflictDialogProps) {
+export function ProfileConflictDialog({ prompt, onAction }: ProfileConflictDialogProps) {
   if (!prompt) return null;
 
-  const { skillName, fileName } = prompt;
+  const { agentName, destinationPath } = prompt;
+
+  // Show just the filename portion of the destination path for readability
+  const fileName = destinationPath.split("/").pop() ?? destinationPath;
 
   return (
     <div
       className="profile-conflict-dialog__overlay"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="skill-conflict-dialog-title"
+      aria-labelledby="profile-conflict-dialog-title"
     >
       <div className="profile-conflict-dialog__container">
 
         {/* ── Header ───────────────────────────────────────────────── */}
         <div className="profile-conflict-dialog__header">
           <h2
-            id="skill-conflict-dialog-title"
+            id="profile-conflict-dialog-title"
             className="profile-conflict-dialog__title"
           >
-            Skill file already exists
+            Profile file already exists
           </h2>
         </div>
 
@@ -72,7 +75,7 @@ export function SkillConflictDialog({ prompt, onAction }: SkillConflictDialogPro
         <div className="profile-conflict-dialog__body">
           <p className="profile-conflict-dialog__message">
             <code className="profile-conflict-dialog__path">{fileName}</code>
-            {" "}for skill <strong>{skillName}</strong> ya existe. ¿Reemplazar?
+            {" "}for agent <strong>{agentName}</strong> ya existe. ¿Reemplazar?
           </p>
         </div>
 
@@ -81,7 +84,7 @@ export function SkillConflictDialog({ prompt, onAction }: SkillConflictDialogPro
           <button
             className="profile-conflict-dialog__btn profile-conflict-dialog__btn--replace"
             onClick={() => onAction("replace")}
-            title="Replace this skill file and continue asking for subsequent conflicts"
+            title="Replace this profile file and continue asking for subsequent conflicts"
             autoFocus
           >
             Replace This
@@ -89,14 +92,14 @@ export function SkillConflictDialog({ prompt, onAction }: SkillConflictDialogPro
           <button
             className="profile-conflict-dialog__btn profile-conflict-dialog__btn--replace-all"
             onClick={() => onAction("replace-all")}
-            title="Replace this and all remaining conflicting skill files without asking again"
+            title="Replace this and all remaining conflicting profile files without asking again"
           >
             Replace All
           </button>
           <button
             className="profile-conflict-dialog__btn profile-conflict-dialog__btn--cancel"
             onClick={() => onAction("cancel")}
-            title="Cancel the entire skills export"
+            title="Cancel the entire profiles export"
           >
             Cancel
           </button>

@@ -865,6 +865,53 @@ describe("exportActiveSkills — end-to-end", () => {
     }
   });
 
+  it("replace-all propagates across multiple skill directories in the same export", async () => {
+    const tmp = await mkdtemp(join(tmpdir(), "af-export-skills-"));
+    try {
+      const projectDir = join(tmp, "project");
+      const destDir = join(tmp, "dest");
+
+      // Two skill directories, each with one file
+      await makeSkillDir(projectDir, "skill-a");
+      await writeFile(join(projectDir, "skills", "skill-a", "extra.md"), "# Extra A new");
+      await makeSkillDir(projectDir, "skill-b");
+
+      await writeAdataWithPermissions(projectDir, "agent-1", {
+        "skill-a": "allow",
+        "skill-b": "allow",
+      });
+
+      // Pre-create conflicts in BOTH skill directories
+      const destSkillsDir = join(destDir, "skills");
+      await mkdir(join(destSkillsDir, "skill-a"), { recursive: true });
+      await writeFile(join(destSkillsDir, "skill-a", "SKILL.md"), "# Old A");
+      await writeFile(join(destSkillsDir, "skill-a", "extra.md"), "# Old extra A");
+      await mkdir(join(destSkillsDir, "skill-b"), { recursive: true });
+      await writeFile(join(destSkillsDir, "skill-b", "SKILL.md"), "# Old B");
+
+      let callCount = 0;
+      const result = await exportActiveSkills(projectDir, destDir, async () => {
+        callCount++;
+        return "replace-all";
+      });
+
+      expect(result.aborted).toBe(false);
+      // Callback should be called only ONCE even though there are conflicts in two skills
+      // because replace-all from skill-a carries over to skill-b
+      expect(callCount).toBe(1);
+
+      // Both skill-a and skill-b should be fully overwritten
+      const contentA = await readFile(join(destSkillsDir, "skill-a", "SKILL.md"), "utf-8");
+      const contentExtraA = await readFile(join(destSkillsDir, "skill-a", "extra.md"), "utf-8");
+      const contentB = await readFile(join(destSkillsDir, "skill-b", "SKILL.md"), "utf-8");
+      expect(contentA).toBe("# skill-a skill");
+      expect(contentExtraA).toBe("# Extra A new");
+      expect(contentB).toBe("# skill-b skill");
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("expands wildcard in permissions.skills during export", async () => {
     const tmp = await mkdtemp(join(tmpdir(), "af-export-skills-"));
     try {

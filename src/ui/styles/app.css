@@ -6533,3 +6533,131 @@ button:disabled {
 	background: var(--color-surface-3, #2a2d42);
 	color: var(--color-text, #e2e4ef);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Profile Conflict Dialog
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Shown as an overlay above the Export modal when an agent profile .md file
+ * already exists at the export destination. Mirrors the SkillConflictDialog
+ * layout and styling.
+ *
+ * z-index: 10003 — one above the export modal overlay (10002) so the dialog
+ * appears in front when both are mounted.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Overlay ─────────────────────────────────────────────────────────────── */
+
+.profile-conflict-dialog__overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.55);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10003;
+	backdrop-filter: blur(2px);
+	animation: fadeIn 120ms ease;
+}
+
+/* ── Container ───────────────────────────────────────────────────────────── */
+
+.profile-conflict-dialog__container {
+	background: var(--color-surface, #1a1c2e);
+	border: 1px solid var(--color-border, #2e3147);
+	border-radius: var(--radius-lg, 8px);
+	padding: 24px;
+	min-width: 340px;
+	max-width: 480px;
+	width: 90vw;
+	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+	animation: slideUp 150ms ease;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.profile-conflict-dialog__header {
+	margin-bottom: 12px;
+}
+
+.profile-conflict-dialog__title {
+	font-size: 1rem;
+	font-weight: 600;
+	color: var(--color-text, #e2e4ef);
+	margin: 0;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+
+.profile-conflict-dialog__body {
+	margin-bottom: 20px;
+}
+
+.profile-conflict-dialog__message {
+	font-size: 0.875rem;
+	color: var(--color-text-muted, #8b91b3);
+	margin: 0;
+	line-height: 1.5;
+}
+
+.profile-conflict-dialog__path {
+	font-family: monospace;
+	font-size: 0.8rem;
+	color: var(--color-accent, #7c7fff);
+	background: var(--color-surface-2, #21233a);
+	padding: 1px 5px;
+	border-radius: 3px;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────── */
+
+.profile-conflict-dialog__actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.profile-conflict-dialog__btn {
+	padding: 6px 14px;
+	border-radius: var(--radius-sm, 4px);
+	font-size: 0.8rem;
+	cursor: pointer;
+	transition: background 0.15s, color 0.15s, border-color 0.15s;
+	border: 1px solid transparent;
+}
+
+/* Replace This */
+.profile-conflict-dialog__btn--replace {
+	background: var(--color-accent, #7c7fff);
+	color: #fff;
+	border-color: var(--color-accent, #7c7fff);
+}
+
+.profile-conflict-dialog__btn--replace:hover {
+	background: var(--color-accent-hover, #6a6df0);
+	border-color: var(--color-accent-hover, #6a6df0);
+}
+
+/* Replace All */
+.profile-conflict-dialog__btn--replace-all {
+	background: transparent;
+	color: var(--color-text, #e2e4ef);
+	border-color: var(--color-border, #2e3147);
+}
+
+.profile-conflict-dialog__btn--replace-all:hover {
+	background: var(--color-surface-3, #2a2d42);
+}
+
+/* Cancel */
+.profile-conflict-dialog__btn--cancel {
+	background: transparent;
+	color: var(--color-text-muted, #8b91b3);
+	border-color: transparent;
+	margin-left: auto;
+}
+
+.profile-conflict-dialog__btn--cancel:hover {
+	color: var(--color-text, #e2e4ef);
+	background: var(--color-surface-3, #2a2d42);
+}

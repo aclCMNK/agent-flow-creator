@@ -921,3 +921,382 @@ describe("ExportModal — FolderExplorer integration sanity check", () => {
     expect(source).toContain('onConfirm={handleFolderConfirm}');
   });
 });
+
+// ── ExportModal sanity: Profile export integration ─────────────────────────
+//
+// Static assertions that guard against regressions in the profile export flow.
+// They verify the key integration points:
+//   1. ProfileConflictDialog is imported and rendered.
+//   2. onProfileConflict listener is registered before calling exportAgentProfiles.
+//   3. offProfileConflict is called in the finally block.
+//   4. bridge.exportAgentProfiles is called with the correct args.
+//   5. The success message includes the profiles summary.
+
+const PROFILE_CONFLICT_DIALOG_PATH = join(__dirname, "../../src/ui/components/ExportModal/ProfileConflictDialog.tsx");
+
+describe("ExportModal — profile export integration sanity check", () => {
+  it("imports ProfileConflictDialog", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("import { ProfileConflictDialog }");
+  });
+
+  it("imports profile conflict types from bridge.types", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("ExportProfileConflictPrompt");
+    expect(source).toContain("ExportProfileConflictAction");
+  });
+
+  it("declares profileConflictPrompt state", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("profileConflictPrompt");
+    expect(source).toContain("setProfileConflictPrompt");
+  });
+
+  it("registers onProfileConflict before calling exportAgentProfiles", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    const onIdx    = source.indexOf("onProfileConflict");
+    const exportIdx = source.indexOf("exportAgentProfiles");
+    expect(onIdx).toBeGreaterThan(-1);
+    expect(exportIdx).toBeGreaterThan(-1);
+    // onProfileConflict must appear before exportAgentProfiles in the source
+    expect(onIdx).toBeLessThan(exportIdx);
+  });
+
+  it("calls bridge.exportAgentProfiles with projectDir and destDir", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("bridge.exportAgentProfiles({");
+    expect(source).toContain("projectDir: project.projectDir");
+    expect(source).toContain("destDir: exportDir");
+  });
+
+  it("calls offProfileConflict in the finally block", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("bridge.offProfileConflict()");
+  });
+
+  it("renders ProfileConflictDialog in JSX with prompt and onAction props", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("<ProfileConflictDialog");
+    expect(source).toContain("prompt={profileConflictPrompt}");
+    expect(source).toContain("onAction={handleProfileConflictAction}");
+  });
+
+  it("defines handleProfileConflictAction handler", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("handleProfileConflictAction");
+    expect(source).toContain("bridge.respondProfileConflict({");
+  });
+
+  it("ProfileConflictDialog source file exists and has required structure", async () => {
+    const source = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    // Must export the component
+    expect(source).toContain("export function ProfileConflictDialog");
+    // Must import the correct types
+    expect(source).toContain("ExportProfileConflictPrompt");
+    expect(source).toContain("ExportProfileConflictAction");
+    // Must handle all three actions
+    expect(source).toContain('"replace"');
+    expect(source).toContain('"replace-all"');
+    expect(source).toContain('"cancel"');
+    // Must have accessibility attributes
+    expect(source).toContain('role="dialog"');
+    expect(source).toContain('aria-modal="true"');
+  });
+
+   it("ProfileConflictDialog shows agentName in the conflict message", async () => {
+    const source = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    // Must destructure agentName from prompt
+    expect(source).toContain("agentName");
+    // Must render it in the message body
+    expect(source).toContain("{agentName}");
+  });
+});
+
+// ── SkillConflictDialog sanity: structure mirrors ProfileConflictDialog ─────
+//
+// Static assertions that verify SkillConflictDialog matches the visual
+// structure, ARIA roles, button layout and message format of ProfileConflictDialog.
+
+const SKILL_CONFLICT_DIALOG_PATH = join(__dirname, "../../src/ui/components/ExportModal/SkillConflictDialog.tsx");
+
+describe("SkillConflictDialog — structure mirrors ProfileConflictDialog", () => {
+  it("exports SkillConflictDialog function", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("export function SkillConflictDialog");
+  });
+
+  it("imports the correct conflict types from bridge.types", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("ExportSkillsConflictPrompt");
+    expect(source).toContain("ExportSkillsConflictAction");
+  });
+
+  it("handles all three actions", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain('"replace"');
+    expect(source).toContain('"replace-all"');
+    expect(source).toContain('"cancel"');
+  });
+
+  it("has required ARIA accessibility attributes", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain('role="dialog"');
+    expect(source).toContain('aria-modal="true"');
+    expect(source).toContain('aria-labelledby="skill-conflict-dialog-title"');
+  });
+
+  it("title text reads 'Skill file already exists'", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("Skill file already exists");
+  });
+
+  it("shows skillName in the conflict message (mirrors agentName in ProfileConflictDialog)", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("skillName");
+    expect(source).toContain("{skillName}");
+  });
+
+  it("shows fileName as a <code> element (mirrors fileName from destinationPath in ProfileConflictDialog)", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("fileName");
+    expect(source).toContain("{fileName}");
+  });
+
+  it("uses <code> element to render the file name", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("<code");
+    expect(source).toContain("</code>");
+  });
+
+  it("uses <strong> element to highlight skillName (mirrors agentName in ProfileConflictDialog)", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("<strong>");
+    expect(source).toContain("</strong>");
+  });
+
+  it("Replace This button has autoFocus (mirrors ProfileConflictDialog)", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("autoFocus");
+  });
+
+  it("buttons have descriptive title attributes", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain('title="Replace this skill file and continue asking for subsequent conflicts"');
+    expect(source).toContain('title="Replace this and all remaining conflicting skill files without asking again"');
+    expect(source).toContain('title="Cancel the entire skills export"');
+  });
+
+  it("does NOT use the old concatenated conflictPath pattern", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    // The old implementation used `skillName/fileName` — replaced by separate <code> and <strong>
+    expect(source).not.toContain("conflictPath");
+  });
+
+  it("button labels are exactly 'Replace This', 'Replace All', 'Cancel'", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("Replace This");
+    expect(source).toContain("Replace All");
+    expect(source).toContain("Cancel");
+  });
+
+  it("has header section with h2 title element", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("skill-conflict-dialog__header");
+    expect(source).toContain("skill-conflict-dialog__title");
+    expect(source).toContain("<h2");
+    expect(source).toContain("</h2>");
+  });
+
+  it("has body section with message paragraph", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("skill-conflict-dialog__body");
+    expect(source).toContain("skill-conflict-dialog__message");
+    expect(source).toContain("<p");
+    expect(source).toContain("</p>");
+  });
+
+  it("has actions section with three buttons", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("skill-conflict-dialog__actions");
+    expect(source).toContain("skill-conflict-dialog__btn--replace");
+    expect(source).toContain("skill-conflict-dialog__btn--replace-all");
+    expect(source).toContain("skill-conflict-dialog__btn--cancel");
+  });
+
+  it("container and overlay CSS classes follow the same naming pattern as ProfileConflictDialog", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("skill-conflict-dialog__overlay");
+    expect(source).toContain("skill-conflict-dialog__container");
+  });
+
+  it("title element id matches aria-labelledby attribute", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain('id="skill-conflict-dialog-title"');
+    expect(source).toContain('aria-labelledby="skill-conflict-dialog-title"');
+  });
+
+  it("trigger comment describes ExportModal inline rendering (not App.tsx portal)", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("Rendered inline inside ExportModal");
+    expect(source).not.toContain("App.tsx");
+    expect(source).not.toContain("createPortal");
+  });
+});
+
+// ── SkillConflictDialog vs ProfileConflictDialog — structural parity ─────────
+//
+// Cross-checks that verify both dialogs share the same structural patterns
+// so that future changes to ProfileConflictDialog can be mirrored to
+// SkillConflictDialog with minimal effort.
+
+describe("SkillConflictDialog vs ProfileConflictDialog — structural parity", () => {
+  it("both have the same three button action strings", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    for (const label of ["Replace This", "Replace All", "Cancel"]) {
+      expect(skill).toContain(label);
+      expect(profile).toContain(label);
+    }
+  });
+
+  it("both return null when prompt is null", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(skill).toContain("if (!prompt) return null");
+    expect(profile).toContain("if (!prompt) return null");
+  });
+
+  it("both have role=dialog + aria-modal=true", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    for (const src of [skill, profile]) {
+      expect(src).toContain('role="dialog"');
+      expect(src).toContain('aria-modal="true"');
+    }
+  });
+
+  it("both have autoFocus on the Replace This button", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(skill).toContain("autoFocus");
+    expect(profile).toContain("autoFocus");
+  });
+
+  it("both have the same three-section JSX layout: header + body + actions", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    for (const suffix of ["__header", "__body", "__actions"]) {
+      expect(skill).toContain(`skill-conflict-dialog${suffix}`);
+      expect(profile).toContain(`profile-conflict-dialog${suffix}`);
+    }
+  });
+
+  it("both use <code> for filename and <strong> for entity name", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    for (const src of [skill, profile]) {
+      expect(src).toContain("<code");
+      expect(src).toContain("</code>");
+      expect(src).toContain("<strong>");
+      expect(src).toContain("</strong>");
+    }
+  });
+
+  it("both use 'ya existe. ¿Reemplazar?' phrasing in the message", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(skill).toContain("ya existe. ¿Reemplazar?");
+    expect(profile).toContain("ya existe. ¿Reemplazar?");
+  });
+
+  it("both use 'for <entity> <strong>...' message pattern", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(skill).toContain("for skill");
+    expect(profile).toContain("for agent");
+  });
+
+  it("both have 'Rendered inline inside ExportModal' in their Trigger comment", async () => {
+    const skill   = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    const profile = await readFile(PROFILE_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(skill).toContain("Rendered inline inside ExportModal");
+    expect(profile).toContain("Rendered inline inside ExportModal");
+  });
+});
+
+// ── ExportModal — skill export integration sanity check ───────────────────
+//
+// Static assertions that guard against regressions in the skill export flow.
+// They verify the key integration points within ExportModal.tsx:
+//   1. SkillConflictDialog is imported and rendered.
+//   2. onSkillConflict listener is registered before calling exportSkills.
+//   3. offSkillConflict is called in the finally block.
+//   4. bridge.exportSkills is called with the correct args.
+//   5. SkillConflictDialog is rendered with prompt and onAction props.
+//
+// Mirrors the "ExportModal — profile export integration sanity check" suite above.
+
+describe("ExportModal — skill export integration sanity check", () => {
+  it("imports SkillConflictDialog", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("import { SkillConflictDialog }");
+  });
+
+  it("imports skill conflict types from bridge.types", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("ExportSkillsConflictPrompt");
+    expect(source).toContain("ExportSkillsConflictAction");
+  });
+
+  it("declares skillConflictPrompt state", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("skillConflictPrompt");
+    expect(source).toContain("setSkillConflictPrompt");
+  });
+
+  it("registers onSkillConflict before calling exportSkills", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    const onIdx     = source.indexOf("onSkillConflict");
+    const exportIdx = source.indexOf("exportSkills");
+    expect(onIdx).toBeGreaterThan(-1);
+    expect(exportIdx).toBeGreaterThan(-1);
+    // onSkillConflict must appear before exportSkills in the source
+    expect(onIdx).toBeLessThan(exportIdx);
+  });
+
+  it("calls offSkillConflict in the finally block", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("bridge.offSkillConflict()");
+  });
+
+  it("renders SkillConflictDialog in JSX with prompt and onAction props", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("<SkillConflictDialog");
+    expect(source).toContain("prompt={skillConflictPrompt}");
+    expect(source).toContain("onAction={handleSkillConflictAction}");
+  });
+
+  it("defines handleSkillConflictAction handler", async () => {
+    const source = await readFile(EXPORT_MODAL_PATH, "utf-8");
+    expect(source).toContain("handleSkillConflictAction");
+    expect(source).toContain("bridge.respondSkillConflict({");
+  });
+
+  it("SkillConflictDialog source file exists and has required structure", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("export function SkillConflictDialog");
+    expect(source).toContain("ExportSkillsConflictPrompt");
+    expect(source).toContain("ExportSkillsConflictAction");
+    expect(source).toContain('"replace"');
+    expect(source).toContain('"replace-all"');
+    expect(source).toContain('"cancel"');
+    expect(source).toContain('role="dialog"');
+    expect(source).toContain('aria-modal="true"');
+  });
+
+  it("SkillConflictDialog shows skillName in the conflict message (mirrors agentName in ProfileConflictDialog)", async () => {
+    const source = await readFile(SKILL_CONFLICT_DIALOG_PATH, "utf-8");
+    expect(source).toContain("skillName");
+    expect(source).toContain("{skillName}");
+  });
+});

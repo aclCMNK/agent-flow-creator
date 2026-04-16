@@ -88,10 +88,9 @@ export type ProfileConflictCallback = (
 // ── Helper: Load agent metadata ────────────────────────────────────────────
 
 interface AgentAdata {
+  /** Top-level agent name as stored in the .adata file. This is the CANONICAL name. */
+  agentName?: string;
   profile?: AgentProfile[];
-  metadata?: {
-    name?: string;
-  };
 }
 
 async function loadAgentAdata(filePath: string): Promise<AgentAdata | null> {
@@ -140,7 +139,12 @@ export async function collectProfilesToExport(
       });
 
       const agentId = file.replace('.adata', '');
-      const agentName = adata.metadata?.name || agentId;
+      // agentName is read ALWAYS from the top-level "agentName" field of the .adata.
+      // It is NEVER modified or sanitized. Falls back to agentId only if the field
+      // is absent (legacy files that pre-date the agentName field).
+      const agentName = typeof adata.agentName === 'string' && adata.agentName.length > 0
+        ? adata.agentName
+        : agentId;
 
       result.push({
         agentId,
@@ -285,15 +289,18 @@ async function writeAtomicFile(
 /**
  * Builds the destination path for an agent's exported profiles.
  * Format: [exportDir]/prompts/[projectName]/[agentName].md
+ *
+ * The agentName is used EXACTLY as stored in the .adata "agentName" field —
+ * never modified, never sanitized. If the OS rejects the resulting path, the
+ * error propagates naturally and the agent is added to the skipped list with
+ * the OS error message. It is NOT our job to alter the name.
  */
 function buildDestinationPath(
   projectName: string,
   agentName: string,
   exportDir: string,
 ): string {
-  // Sanitize agent name (replace / with -)
-  const sanitizedName = agentName.replace(/\//g, '-');
-  return join(exportDir, 'prompts', projectName, `${sanitizedName}.md`);
+  return join(exportDir, 'prompts', projectName, `${agentName}.md`);
 }
 
 /**

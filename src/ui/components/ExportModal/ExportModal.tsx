@@ -153,9 +153,12 @@ import type { IpcError } from "../../../renderer/services/ipc.ts";
 // export. We use local state here (not the global store) because the dialog is
 // only needed during an active export and its lifecycle is fully contained.
 import { SkillConflictDialog } from "./SkillConflictDialog.tsx";
+import { ProfileConflictDialog } from "./ProfileConflictDialog.tsx";
 import type {
   ExportSkillsConflictPrompt,
   ExportSkillsConflictAction,
+  ExportProfileConflictPrompt,
+  ExportProfileConflictAction,
 } from "../../../electron/bridge.types.ts";
 
 // ── Local counter for plugin IDs ─────────────────────────────────────────
@@ -341,6 +344,13 @@ export function ExportModal({
   //                         (drives SkillConflictDialog visibility; triggered
   //                          automatically during the unified handleExport flow)
   const [skillConflictPrompt, setSkillConflictPrompt] = useState<ExportSkillsConflictPrompt | null>(null);
+
+  // ── Profile conflict state ─────────────────────────────────────────────
+  // profileConflictPrompt — active profile conflict prompt from the main process,
+  //                          or null (drives ProfileConflictDialog visibility;
+  //                          triggered automatically after skills export in the
+  //                          unified handleExport flow)
+  const [profileConflictPrompt, setProfileConflictPrompt] = useState<ExportProfileConflictPrompt | null>(null);
 
   // ── Skills tab state ───────────────────────────────────────────────────
   const [skills, setSkills] = useState<Array<{ name: string; relativePath: string; content: string }>>([]);
@@ -637,9 +647,43 @@ export function ExportModal({
         setSkillConflictPrompt(null);
       }
 
+      // ── Agent profiles export (unified, automatic) ──────────────────────
+      // After skills export, copy concatenated agent profile .md files to
+      // [destDir]/prompts/[projectName]/[agentName].md. Conflict prompts are
+      // surfaced via ProfileConflictDialog without any extra button.
+      bridge.onProfileConflict((prompt: ExportProfileConflictPrompt) => {
+        setProfileConflictPrompt(prompt);
+      });
+
+      let profilesSummary = "";
+      try {
+        const profilesResult = await bridge.exportAgentProfiles({
+          projectDir: project.projectDir,
+          destDir: exportDir,
+        });
+
+        if (profilesResult.error && !profilesResult.exported.length) {
+          profilesSummary = ` (profiles: ${profilesResult.error})`;
+        } else {
+          const exported = profilesResult.summary.exportedCount;
+          const skipped  = profilesResult.summary.skippedCount;
+          const warnings = profilesResult.summary.warningCount;
+          const parts: string[] = [`${exported} profile${exported !== 1 ? "s" : ""} exported`];
+          if (skipped > 0) parts.push(`${skipped} skipped`);
+          if (warnings > 0) parts.push(`${warnings} warning${warnings !== 1 ? "s" : ""}`);
+          profilesSummary = ` — ${parts.join(", ")}`;
+        }
+      } catch (profileErr) {
+        const profileMsg = profileErr instanceof Error ? profileErr.message : String(profileErr);
+        profilesSummary = ` (profiles error: ${profileMsg})`;
+      } finally {
+        bridge.offProfileConflict();
+        setProfileConflictPrompt(null);
+      }
+
       setExportResult({
         success: true,
-        message: `Exported to ${writeResult.filePath}${skillsSummary}`,
+        message: `Exported to ${writeResult.filePath}${skillsSummary}${profilesSummary}`,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -660,6 +704,18 @@ export function ExportModal({
     });
     setSkillConflictPrompt(null);
   }, [bridge, skillConflictPrompt]);
+
+  // ── handleProfileConflictAction ───────────────────────────────────────
+  // Called by ProfileConflictDialog when the user clicks one of the action
+  // buttons. Forwards the choice to the main process and hides the dialog.
+  const handleProfileConflictAction = useCallback((action: ExportProfileConflictAction) => {
+    if (!bridge || !profileConflictPrompt) return;
+    bridge.respondProfileConflict({
+      promptId: profileConflictPrompt.promptId,
+      action,
+    });
+    setProfileConflictPrompt(null);
+  }, [bridge, profileConflictPrompt]);
 
   // Plugin helpers
   const handleAddPlugin = useCallback(() => {
@@ -897,6 +953,18 @@ export function ExportModal({
         <SkillConflictDialog
           prompt={skillConflictPrompt}
           onAction={handleSkillConflictAction}
+        />
+
+        {/* ── Profile conflict dialog ───────────────────────────────────
+         *
+         * Shown as an overlay above the modal when the main process detects a
+         * file conflict during agent profiles export (after skills export).
+         * The user chooses to replace, replace all, or cancel.
+         * Triggered automatically as part of the unified Export button flow.
+         */}
+        <ProfileConflictDialog
+          prompt={profileConflictPrompt}
+          onAction={handleProfileConflictAction}
         />
 
         {/* ── Tab bar ─────────────────────────────────────────────────── */}

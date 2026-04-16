@@ -344,6 +344,9 @@ export async function getActiveSkills(projectDir: string): Promise<GetActiveSkil
  * @param destSkillsDir  Absolute path to the destination `skills/` directory
  * @param skillDirName   Relative name of the skill dir (e.g. "kb-search")
  * @param onConflict     Callback invoked when a file already exists at dest
+ * @param replaceAllRef  Shared mutable flag — set to true when user chooses
+ *                       "replace-all" so the flag persists across multiple
+ *                       skill directories in the same export session.
  * @returns              { aborted: boolean } — true if user chose "cancel"
  */
 export async function copySkillDirWithConflict(
@@ -351,6 +354,7 @@ export async function copySkillDirWithConflict(
   destSkillsDir: string,
   skillDirName: string,
   onConflict: SkillConflictCallback,
+  replaceAllRef: { value: boolean } = { value: false },
 ): Promise<{ aborted: boolean }> {
   const srcDir = join(srcSkillsDir, skillDirName);
   const destDir = join(destSkillsDir, skillDirName);
@@ -362,9 +366,6 @@ export async function copySkillDirWithConflict(
   } catch {
     return { aborted: false }; // source missing — skip silently
   }
-
-  // Internal state: once the user chooses replace-all, we stop asking
-  let replaceAll = false;
 
   async function walk(src: string, dest: string): Promise<boolean> {
     // Ensure destination directory exists
@@ -394,13 +395,13 @@ export async function copySkillDirWithConflict(
       } else if (entryInfo.isFile()) {
         const destExists = existsSync(destPath);
 
-        if (destExists && !replaceAll) {
+        if (destExists && !replaceAllRef.value) {
           // Compute relative file path within the skill dir for the user message
           const relFile = relative(srcDir, srcPath).replace(/\\/g, "/");
           const action = await onConflict(skillDirName, relFile);
 
           if (action === "cancel") return true;    // abort
-          if (action === "replace-all") replaceAll = true;
+          if (action === "replace-all") replaceAllRef.value = true;
           // "replace" or "replace-all" → fall through to copy
         }
 
@@ -452,6 +453,10 @@ export async function exportActiveSkills(
   const copiedSkills: string[] = [];
   const skippedSkills: string[] = [];
 
+  // Shared replaceAll flag — persists across ALL skill directories in this export
+  // so that "Replace All" chosen for skill A silently overwrites conflicts in B, C, …
+  const replaceAllRef: { value: boolean } = { value: false };
+
   for (const { skillDirName } of activeSkills) {
     // Skip if source directory doesn't exist (graceful)
     const srcSkillDir = join(srcSkillsDir, skillDirName);
@@ -471,6 +476,7 @@ export async function exportActiveSkills(
       destSkillsDir,
       skillDirName,
       onConflict,
+      replaceAllRef,
     );
 
     if (result.aborted) {
