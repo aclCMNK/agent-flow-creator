@@ -6996,3 +6996,62 @@ button:disabled {
 	color: var(--color-text, #e2e4ef);
 	background: var(--color-surface-3, #2a2d42);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Asset Panel — Drag & Drop Visual States
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Item being dragged: slightly transparent + cursor feedback */
+.dnd--dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+/* Valid drop target: green highlight ring */
+.dnd--drop-valid {
+  outline: 2px dashed var(--color-success, #4caf82);
+  outline-offset: -2px;
+  background: rgba(76, 175, 130, 0.08) !important;
+  border-radius: var(--radius-sm, 4px);
+}
+
+/* Invalid drop target: red-ish highlight ring */
+.dnd--drop-invalid {
+  outline: 2px dashed var(--color-danger, #e05263);
+  outline-offset: -2px;
+  background: rgba(224, 82, 99, 0.06) !important;
+  border-radius: var(--radius-sm, 4px);
+}
+
+/* Drag-ghost placeholder (skeleton row) — shown when dragging */
+.dnd--skeleton {
+  opacity: 0.3;
+  pointer-events: none;
+  background: var(--color-surface-3, #2a2d42);
+  border-radius: var(--radius-sm, 4px);
+  height: 28px;
+  margin: 2px 0;
+  animation: dnd-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dnd-pulse {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 0.55; }
+}
+
+/* DirTree node — drop target overlay when dragging over it */
+.dirtree__node.dnd--drop-valid,
+.dirtree__node.dnd--drop-invalid {
+  transition: background 0.12s, outline 0.12s;
+}
+
+/* FileList subdir row — drop target overlay */
+.filelist__subdir-row.dnd--drop-valid,
+.filelist__subdir-row.dnd--drop-invalid {
+  transition: background 0.12s, outline 0.12s;
+}
+
+/* FileList whole panel — accepts drops when hovering blank area */
+.filelist.dnd--drop-valid {
+  outline-offset: -4px;
+}

@@ -78,6 +78,8 @@ import type {
   AssetReadResult,
   AssetOpResult,
   AssetDirEntry,
+  AssetMovePayload,
+  AssetMoveResult,
   AdataAdapterRequest,
   AdataSetAdapterRequest,
   AdataGetOpenCodeConfigRequest,
@@ -211,6 +213,10 @@ const bridge: AgentsFlowBridge = {
 
   assetOpenMdDialog(): Promise<string | null> {
     return ipcRenderer.invoke(IPC_CHANNELS.ASSET_OPEN_MD_DIALOG);
+  },
+
+  assetMove(payload: AssetMovePayload): Promise<AssetMoveResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.ASSET_MOVE, payload);
   },
 
   // ── Adapter field ────────────────────────────────────────────────────────

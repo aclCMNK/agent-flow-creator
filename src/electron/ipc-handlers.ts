@@ -53,6 +53,8 @@ import type {
   AssetFileEntry,
   AssetOpResult,
   AssetReadResult,
+  AssetMovePayload,
+  AssetMoveResult,
   AdataAdapterRequest,
   AdataSetAdapterRequest,
   AdataGetAdapterResult,
@@ -1064,6 +1066,70 @@ export function registerIpcHandlers(): void {
         : await dialog.showOpenDialog(opts);
       if (result.canceled || result.filePaths.length === 0) return null;
       return result.filePaths[0] ?? null;
+    }
+  );
+
+  // ── Asset Move ─────────────────────────────────────────────────────────────
+  /**
+   * Moves a file or directory (sourcePath) into a target directory (targetDirPath).
+   *
+   * Guards:
+   *   - Protected system directories (metadata, behaviors) are never moveable as source
+   *   - Cannot move to the same parent (no-op guard)
+   *   - Cannot create directory cycles (dir moved into itself or its descendant)
+   *   - Name conflicts: fails if a same-named item already exists at target
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_MOVE,
+    async (_event, payload: AssetMovePayload): Promise<AssetMoveResult> => {
+      const { sourcePath, targetDirPath, projectRoot } = payload;
+
+      // Normalize paths
+      const normalise = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+      const src = normalise(sourcePath);
+      const tgt = normalise(targetDirPath);
+      const root = normalise(projectRoot);
+
+      const srcBasename = basename(src);
+
+      // Guard: protected system directories at project root level
+      const PROTECTED_NAMES = new Set(["metadata"]);
+      const isProtectedAtRoot = (p: string) => {
+        const parent = normalise(dirname(p));
+        return parent === root && PROTECTED_NAMES.has(basename(p));
+      };
+      if (isProtectedAtRoot(src)) {
+        return { success: false, error: "System directory cannot be moved.", errorCode: "PROTECTED" };
+      }
+      // Guard: cannot move into metadata
+      if (tgt === join(root, "metadata") || tgt.startsWith(join(root, "metadata") + "/")) {
+        return { success: false, error: "Cannot move items into the metadata directory.", errorCode: "PROTECTED" };
+      }
+
+      // Guard: same parent — already there
+      const srcParent = normalise(dirname(src));
+      if (srcParent === tgt) {
+        return { success: false, error: "Item is already in that folder.", errorCode: "SAME_PARENT" };
+      }
+
+      // Guard: cycle — moving a directory into itself or a descendant
+      const srcWithSlash = src + "/";
+      if (tgt === src || tgt.startsWith(srcWithSlash)) {
+        return { success: false, error: "Cannot move a folder into itself or one of its subfolders.", errorCode: "CYCLE" };
+      }
+
+      // Guard: name conflict at destination
+      const destPath = join(targetDirPath, srcBasename);
+      if (existsSync(destPath)) {
+        return { success: false, error: `"${srcBasename}" already exists in the destination folder.`, errorCode: "CONFLICT" };
+      }
+
+      try {
+        await rename(sourcePath, destPath);
+        return { success: true, newPath: destPath };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err), errorCode: "IO_ERROR" };
+      }
     }
   );
 

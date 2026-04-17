@@ -93,6 +93,7 @@ function createWindow(): BrowserWindow {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+	icon: join(__dirname, "/assets/blueico.ico"),
     title: "AgentsFlow",
     show: false, // Show after ready-to-show to avoid flash of unstyled content
     autoHideMenuBar: true,  // Hide the native menu bar (no standard Electron menu)

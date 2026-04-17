@@ -410,6 +410,13 @@ export const IPC_CHANNELS = {
   // Only `permissions.task` is modified — all other .adata fields are preserved.
   // Returns { updated: number, errors: string[] }.
   SYNC_TASKS: "adata:sync-tasks",
+
+  // ── Asset move channel ─────────────────────────────────────────────────────
+  //
+  // Moves a file or directory to a new parent directory.
+  // Validates: no cycle (dir into itself), no name conflicts, protected dirs.
+  // Returns AssetMoveResult.
+  ASSET_MOVE: "asset:move",
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -1360,6 +1367,61 @@ export interface ExportProfileConflictResponse {
    action: ExportProfileConflictAction;
 }
 
+// ── Asset Move ────────────────────────────────────────────────────────────────
+//
+// Moves a file or directory to a new parent directory by renaming it.
+// Protected directories (metadata, .afproj) are never moveable.
+// The handler validates cycles, name conflicts, and protected paths server-side.
+
+/** What kind of item is being dragged */
+export type DraggedItemKind = "file" | "dir";
+
+/** The item being dragged in the asset panel */
+export interface DraggedItem {
+  /** "file" for .md files, "dir" for directories */
+  kind: DraggedItemKind;
+  /** Absolute path of the source item */
+  path: string;
+  /** Basename of the source item */
+  name: string;
+  /** Absolute path of the source item's parent directory */
+  parentPath: string;
+}
+
+/** Payload sent to the ASSET_MOVE IPC channel */
+export interface AssetMovePayload {
+  /** Absolute path of the source item (file or directory) */
+  sourcePath: string;
+  /** Absolute path of the TARGET directory (where item will be moved into) */
+  targetDirPath: string;
+  /** Project root — used for protected-path validation */
+  projectRoot: string;
+}
+
+/** Result from the ASSET_MOVE IPC channel */
+export interface AssetMoveResult {
+  success: boolean;
+  /** New absolute path after the move */
+  newPath?: string;
+  error?: string;
+  /**
+   * Structured error code:
+   *   "CYCLE"      — would create a directory cycle (dir moved into itself)
+   *   "CONFLICT"   — an item with the same name already exists at target
+   *   "PROTECTED"  — source or target is a protected system directory
+   *   "SAME_PARENT"— source is already inside the target directory
+   *   "IO_ERROR"   — generic filesystem error
+   */
+  errorCode?: "CYCLE" | "CONFLICT" | "PROTECTED" | "SAME_PARENT" | "IO_ERROR";
+}
+
+/** Client-side drop validation result (before any IPC call) */
+export interface DropValidation {
+  valid: boolean;
+  /** Human-readable reason when valid === false */
+  reason?: string;
+}
+
 // ── Sync Tasks ────────────────────────────────────────────────────────────────
 
 /**
@@ -1509,6 +1571,13 @@ export interface AgentsFlowBridge {
    * Returns the chosen file path or null if the user cancelled.
    */
   assetOpenMdDialog(): Promise<string | null>;
+
+  /**
+   * Moves a file or directory into a target directory.
+   * Validates cycles, name conflicts, and protected paths server-side.
+   * Returns AssetMoveResult.
+   */
+  assetMove(payload: AssetMovePayload): Promise<AssetMoveResult>;
 
   // ── Adapter field ─────────────────────────────────────────────────────────
 

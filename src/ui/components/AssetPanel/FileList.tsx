@@ -13,6 +13,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAssetStore } from "../../store/assetStore.ts";
+import { useDragDropAssets } from "../../hooks/useDragDropAssets.ts";
 import type { AssetFileEntry, AssetDirEntry } from "../../../electron/bridge.types.ts";
 
 // ── Shared inline input ───────────────────────────────────────────────────
@@ -69,11 +70,12 @@ function InlineInput({ initialValue = "", placeholder, onCommit, onCancel, suffi
 
 interface FileRowProps {
   file: AssetFileEntry;
+  dnd: ReturnType<typeof useDragDropAssets>;
 }
 
 type FileRowMode = "idle" | "renaming" | "confirming-delete";
 
-function FileRow({ file }: FileRowProps) {
+function FileRow({ file, dnd }: FileRowProps) {
   const { openFile, deleteFile, renameFile } = useAssetStore();
   const [mode, setMode] = useState<FileRowMode>("idle");
 
@@ -87,8 +89,15 @@ function FileRow({ file }: FileRowProps) {
     await renameFile(file.path, newName);
   }
 
+  const parentPath = file.path.substring(0, file.path.lastIndexOf("/"));
+  const dragProps = dnd.getDragProps({ kind: "file", path: file.path, name: file.name, parentPath });
+  const isDraggingThis = dnd.draggedItem?.path === file.path;
+
   return (
-    <li className="filelist__file-row">
+    <li
+      className={["filelist__file-row", isDraggingThis ? "dnd--dragging" : ""].filter(Boolean).join(" ")}
+      {...dragProps}
+    >
       {/* Icon */}
       <span className="filelist__file-icon" aria-hidden="true">📄</span>
 
@@ -161,16 +170,29 @@ function FileRow({ file }: FileRowProps) {
 
 interface SubdirRowProps {
   dir: AssetDirEntry;
+  parentPath: string;
+  dnd: ReturnType<typeof useDragDropAssets>;
 }
 
-function SubdirRow({ dir }: SubdirRowProps) {
+function SubdirRow({ dir, parentPath, dnd }: SubdirRowProps) {
   const { selectDir } = useAssetStore();
+
+  const dragProps = dnd.getDragProps({ kind: "dir", path: dir.path, name: dir.name, parentPath });
+  const dropProps = dnd.getDropProps(dir.path);
+  const dropClass = dnd.getDropClass(dir.path);
+  const isDraggingThis = dnd.draggedItem?.path === dir.path;
 
   return (
     <li
-      className="filelist__subdir-row"
+      className={[
+        "filelist__subdir-row",
+        isDraggingThis ? "dnd--dragging" : "",
+        dropClass,
+      ].filter(Boolean).join(" ")}
       onClick={() => selectDir(dir.path)}
       title={`Open folder: ${dir.path}`}
+      {...dragProps}
+      {...dropProps}
     >
       <span className="filelist__file-icon" aria-hidden="true">📁</span>
       <span className="filelist__file-name filelist__file-name--dir">{dir.name}</span>
@@ -260,6 +282,7 @@ export function FileList() {
     selectDir,
   } = useAssetStore();
 
+  const dnd = useDragDropAssets();
   const [creatingFile, setCreatingFile] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ srcPath: string; name: string } | null>(null);
 
@@ -337,7 +360,10 @@ export function FileList() {
   }
 
   return (
-    <div className="filelist">
+    <div
+      className={["filelist", selectedDir ? dnd.getDropClass(selectedDir) : ""].filter(Boolean).join(" ")}
+      {...(selectedDir ? dnd.getDropProps(selectedDir) : {})}
+    >
       {/* ── Toolbar ────────────────────────────────────────────────── */}
       <div className="filelist__toolbar">
         <nav className="filelist__breadcrumb" aria-label="Asset folder navigation">
@@ -428,13 +454,13 @@ export function FileList() {
           )}
 
           {/* Subdirectories first */}
-          {dirContents?.subdirs.map((dir) => (
-            <SubdirRow key={dir.path} dir={dir} />
+          {dirContents?.subdirs.filter((dir) => dir.name !== "metadata").map((dir) => (
+            <SubdirRow key={dir.path} dir={dir} parentPath={selectedDir ?? ""} dnd={dnd} />
           ))}
 
           {/* .md files */}
           {dirContents?.files.map((file) => (
-            <FileRow key={file.path} file={file} />
+            <FileRow key={file.path} file={file} dnd={dnd} />
           ))}
 
           {/* Empty state */}

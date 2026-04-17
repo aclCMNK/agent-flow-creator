@@ -17,7 +17,7 @@
  */
 
 import { create } from "zustand";
-import type { AssetDirEntry, AssetDirContents, AssetFileEntry } from "../../electron/bridge.types.ts";
+import type { AssetDirEntry, AssetDirContents, AssetFileEntry, DraggedItem } from "../../electron/bridge.types.ts";
 
 // ── Bridge accessor ───────────────────────────────────────────────────────
 
@@ -87,6 +87,9 @@ export interface AssetState {
 
   /** Toast notifications queue */
   toasts: AssetToast[];
+
+  /** The item currently being dragged (null when no drag in progress) */
+  draggedItem: DraggedItem | null;
 }
 
 // ── Store actions ─────────────────────────────────────────────────────────
@@ -162,6 +165,18 @@ export interface AssetActions {
 
   /** Dismiss a toast by id. */
   dismissToast(id: string): void;
+
+  // ── Drag & Drop ───────────────────────────────────────────────────────
+
+  /** Set or clear the item currently being dragged. */
+  setDraggedItem(item: DraggedItem | null): void;
+
+  /**
+   * Moves sourcePath into targetDirPath.
+   * Performs optimistic UI update, then reconciles from backend result.
+   * Returns true on success.
+   */
+  moveItem(sourcePath: string, targetDirPath: string): Promise<boolean>;
 }
 
 export type AssetStore = AssetState & AssetActions;
@@ -179,6 +194,7 @@ const initialState: AssetState = {
   activeTabPath: null,
   isLoading: false,
   toasts: [],
+  draggedItem: null,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -644,5 +660,98 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
 
   dismissToast(id) {
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+  },
+
+  // ── Drag & Drop ────────────────────────────────────────────────────────
+
+  setDraggedItem(item) {
+    set({ draggedItem: item });
+  },
+
+  async moveItem(sourcePath, targetDirPath) {
+    const bridge = getBridge();
+    if (!bridge) return false;
+
+    const { projectRoot } = get();
+    if (!projectRoot) return false;
+
+    // Optimistic: refresh after IPC completes
+    const result = await bridge.assetMove({ sourcePath, targetDirPath, projectRoot });
+
+    if (result.success && result.newPath) {
+      const srcBasename = sourcePath.split("/").pop() ?? "";
+      get().pushToast("success", `"${srcBasename}" moved successfully.`);
+
+      // ── Reconcile store state ──────────────────────────────────────────
+
+      // 1. Update open tabs whose filePath started with sourcePath
+      const oldBase = sourcePath;
+      const newBase = result.newPath;
+      set((s) => ({
+        tabs: s.tabs.map((t) => {
+          if (t.filePath === oldBase) {
+            return { ...t, filePath: newBase };
+          }
+          if (t.filePath.startsWith(oldBase + "/")) {
+            return { ...t, filePath: newBase + t.filePath.slice(oldBase.length) };
+          }
+          return t;
+        }),
+        activeTabPath:
+          s.activeTabPath === oldBase
+            ? newBase
+            : s.activeTabPath?.startsWith(oldBase + "/")
+              ? newBase + s.activeTabPath.slice(oldBase.length)
+              : s.activeTabPath,
+      }));
+
+      // 2. Update expandedDirs and childrenMap if dir was expanded
+      const { expandedDirs, childrenMap } = get();
+      const nextExpanded = new Set(expandedDirs);
+      const nextMap: Record<string, AssetDirEntry[]> = { ...childrenMap };
+
+      if (nextExpanded.has(sourcePath)) {
+        nextExpanded.delete(sourcePath);
+        nextExpanded.add(newBase);
+      }
+      if (nextMap[sourcePath]) {
+        nextMap[newBase] = nextMap[sourcePath];
+        delete nextMap[sourcePath];
+      }
+      set({ expandedDirs: nextExpanded, childrenMap: nextMap });
+
+      // 3. Refresh affected dirs
+      const srcParent = sourcePath.substring(0, sourcePath.lastIndexOf("/"));
+      if (srcParent === projectRoot) {
+        await get().refreshTopDirs();
+      } else {
+        await get().refreshChildren(srcParent);
+      }
+      if (targetDirPath === projectRoot) {
+        await get().refreshTopDirs();
+      } else {
+        await get().refreshChildren(targetDirPath);
+      }
+
+      // 4. If selectedDir was the moved item itself, point to new path
+      if (get().selectedDir === sourcePath) {
+        await get().selectDir(newBase);
+      } else if (get().selectedDir === srcParent || get().selectedDir === targetDirPath) {
+        await get().refreshDirContents();
+      }
+    } else {
+      const errorMsg = result.errorCode === "CONFLICT"
+        ? `A file or folder with that name already exists in the destination.`
+        : result.errorCode === "CYCLE"
+          ? `Cannot move a folder into itself.`
+          : result.errorCode === "PROTECTED"
+            ? `That directory cannot be moved.`
+            : result.errorCode === "SAME_PARENT"
+              ? `Item is already in that folder.`
+              : result.error ?? "Move failed.";
+      get().pushToast("error", errorMsg);
+    }
+
+    return result.success;
   },
 }));

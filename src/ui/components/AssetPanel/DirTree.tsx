@@ -14,6 +14,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAssetStore } from "../../store/assetStore.ts";
+import { useDragDropAssets } from "../../hooks/useDragDropAssets.ts";
 import type { AssetDirEntry } from "../../../electron/bridge.types.ts";
 
 // ── Inline confirm dialog ──────────────────────────────────────────────────
@@ -95,9 +96,11 @@ interface DirNodeProps {
   depth: number;
   /** The parent's absolute path (needed for refreshChildren) */
   parentPath: string;
+  /** Drag-and-drop handlers shared from root */
+  dnd: ReturnType<typeof useDragDropAssets>;
 }
 
-function DirNode({ entry, depth, parentPath }: DirNodeProps) {
+function DirNode({ entry, depth, parentPath, dnd }: DirNodeProps) {
   const {
     selectedDir,
     expandedDirs,
@@ -149,14 +152,32 @@ function DirNode({ entry, depth, parentPath }: DirNodeProps) {
 
   const indent = depth * 14;
 
+  // ── Drag-and-drop integration ────────────────────────────────────────
+  const dragProps = dnd.getDragProps({
+    kind: "dir",
+    path: entry.path,
+    name: entry.name,
+    parentPath,
+  });
+  const dropProps = dnd.getDropProps(entry.path);
+  const dropClass = dnd.getDropClass(entry.path);
+  const isDraggingThis = dnd.draggedItem?.path === entry.path;
+
   return (
     <li className="dirtree__node-li">
       {/* ── Node row ──────────────────────────────────────────────────── */}
       <div
-        className={`dirtree__node${isSelected ? " dirtree__node--selected" : ""}`}
+        className={[
+          "dirtree__node",
+          isSelected ? "dirtree__node--selected" : "",
+          isDraggingThis ? "dnd--dragging" : "",
+          dropClass,
+        ].filter(Boolean).join(" ")}
         style={{ paddingLeft: `${8 + indent}px` }}
         onClick={handleClick}
         title={entry.path}
+        {...dragProps}
+        {...dropProps}
       >
         {/* Expand/collapse arrow */}
         <button
@@ -243,12 +264,13 @@ function DirNode({ entry, depth, parentPath }: DirNodeProps) {
               </div>
             </li>
           )}
-          {children.map((child) => (
+          {children.filter((child) => child.name !== "metadata").map((child) => (
             <DirNode
               key={child.path}
               entry={child}
               depth={depth + 1}
               parentPath={entry.path}
+              dnd={dnd}
             />
           ))}
           {children.length === 0 && mode.kind !== "creating-child" && (
@@ -274,6 +296,7 @@ export function DirTree() {
     selectDir,
   } = useAssetStore();
 
+  const dnd = useDragDropAssets();
   const [creatingTop, setCreatingTop] = useState(false);
 
   async function handleCreateTop(name: string) {
@@ -282,6 +305,10 @@ export function DirTree() {
     const { createDir } = useAssetStore.getState();
     await createDir(projectRoot, name);
   }
+
+  // Root row drop props (items can be dropped into project root)
+  const rootDropProps = projectRoot ? dnd.getDropProps(projectRoot) : {};
+  const rootDropClass = projectRoot ? dnd.getDropClass(projectRoot) : "";
 
   return (
     <div className="dirtree">
@@ -313,10 +340,15 @@ export function DirTree() {
         {/* Root / project row */}
         <li className="dirtree__node-li">
           <div
-            className={`dirtree__node dirtree__node--root${selectedDir === projectRoot || !selectedDir ? " dirtree__node--selected" : ""}`}
+            className={[
+              "dirtree__node dirtree__node--root",
+              selectedDir === projectRoot || !selectedDir ? "dirtree__node--selected" : "",
+              rootDropClass,
+            ].filter(Boolean).join(" ")}
             style={{ paddingLeft: "8px" }}
             onClick={() => projectRoot && selectDir(projectRoot)}
             title={projectRoot ?? ""}
+            {...rootDropProps}
           >
             <span className="dirtree__icon" aria-hidden="true">🏠</span>
             <span className="dirtree__name">Project Root</span>
@@ -348,12 +380,13 @@ export function DirTree() {
         )}
 
         {/* Top-level dirs */}
-        {topDirs.map((dir) => (
+        {topDirs.filter((dir) => dir.name !== "metadata").map((dir) => (
           <DirNode
             key={dir.path}
             entry={dir}
             depth={0}
             parentPath={projectRoot ?? ""}
+            dnd={dnd}
           />
         ))}
       </ul>
