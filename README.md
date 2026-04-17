@@ -1,4 +1,5 @@
 ![AgentsFlow Logo](./public/banner.png)
+<img src="./public/banner.png" alt="AgentsFlow Banner" width="700"/>
 
 # AgentsFlow
 > Design. Organize. Flow.  
