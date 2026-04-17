@@ -790,7 +790,10 @@ function TemperatureField({ agentId }: TemperatureFieldProps) {
               {OPENCODE_HIDDEN_TOOLTIP_TEXT}
             </div>
           )}
-          <span className="agent-hidden-toggle__track">
+          <label
+            htmlFor="opencode-hidden-toggle"
+            className="agent-hidden-toggle__track"
+          >
             <input
               id="opencode-hidden-toggle"
               type="checkbox"
@@ -800,7 +803,7 @@ function TemperatureField({ agentId }: TemperatureFieldProps) {
               aria-label={hidden ? "Hidden: true" : "Hidden: false"}
             />
             <span className="agent-hidden-toggle__thumb" aria-hidden="true" />
-          </span>
+          </label>
         </div>
       )}
 
