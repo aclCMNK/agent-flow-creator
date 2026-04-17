@@ -3197,6 +3197,78 @@ button:disabled {
 	min-width: 60px;
 }
 
+/* ── Breadcrumb navigation ─────────────────────────────────────────────── */
+
+.filelist__breadcrumb {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.filelist__breadcrumb-list {
+	display: flex;
+	align-items: center;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	gap: 0;
+	flex-wrap: nowrap;
+	overflow: hidden;
+	font-size: 0.75rem;
+	font-family: var(--font-mono);
+}
+
+.filelist__breadcrumb-item {
+	display: flex;
+	align-items: center;
+	gap: 0;
+	min-width: 0;
+	flex-shrink: 1;
+}
+
+.filelist__breadcrumb-sep {
+	color: var(--color-text-muted);
+	margin: 0 2px;
+	user-select: none;
+	flex-shrink: 0;
+}
+
+.filelist__breadcrumb-btn {
+	background: none;
+	border: none;
+	padding: 1px 3px;
+	border-radius: var(--radius-sm, 3px);
+	font-size: 0.75rem;
+	font-family: var(--font-mono);
+	color: var(--color-primary, #7b9ef0);
+	cursor: pointer;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 120px;
+	transition: background var(--transition), color var(--transition);
+}
+
+.filelist__breadcrumb-btn:hover {
+	background: var(--color-border);
+	color: var(--color-text);
+	text-decoration: underline;
+}
+
+.filelist__breadcrumb-btn:focus-visible {
+	outline: 2px solid var(--color-primary, #7b9ef0);
+	outline-offset: 1px;
+}
+
+.filelist__breadcrumb-current {
+	color: var(--color-text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 160px;
+	display: inline-block;
+}
+
 .filelist__toolbar-actions {
 	display: flex;
 	gap: 6px;

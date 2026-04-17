@@ -201,6 +201,51 @@ function ImportConfirm({ fileName, onConfirm, onCancel }: ImportConfirmProps) {
   );
 }
 
+// ── Breadcrumbs helpers ────────────────────────────────────────────────────
+
+interface Breadcrumb {
+  /** Display label for this segment */
+  label: string;
+  /** Absolute path this segment represents */
+  path: string;
+}
+
+/**
+ * Builds a breadcrumb list from `selectedDir` relative to `projectRoot`.
+ *
+ * Example:
+ *   projectRoot  = "/home/user/my-project"
+ *   selectedDir  = "/home/user/my-project/docs/api"
+ *   → [ { label: "my-project", path: "/home/user/my-project" },
+ *        { label: "docs",       path: "/home/user/my-project/docs" },
+ *        { label: "api",        path: "/home/user/my-project/docs/api" } ]
+ */
+function buildBreadcrumbs(selectedDir: string, projectRoot: string): Breadcrumb[] {
+  // Normalise separators to forward-slash so it works on Windows paths too.
+  const normalise = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+
+  const root = normalise(projectRoot);
+  const dir  = normalise(selectedDir);
+
+  // Root label: last segment of the projectRoot path.
+  const rootLabel = root.split("/").filter(Boolean).pop() ?? root;
+
+  if (dir === root || !dir.startsWith(root)) {
+    return [{ label: rootLabel, path: projectRoot }];
+  }
+
+  const relative = dir.slice(root.length).replace(/^\//, ""); // e.g. "docs/api"
+  const segments = relative.split("/").filter(Boolean);
+
+  const crumbs: Breadcrumb[] = [{ label: rootLabel, path: projectRoot }];
+  let accumulated = root;
+  for (const seg of segments) {
+    accumulated = `${accumulated}/${seg}`;
+    crumbs.push({ label: seg, path: accumulated });
+  }
+  return crumbs;
+}
+
 // ── FileList ───────────────────────────────────────────────────────────────
 
 export function FileList() {
@@ -212,6 +257,7 @@ export function FileList() {
     importFile,
     refreshDirContents,
     projectRoot,
+    selectDir,
   } = useAssetStore();
 
   const [creatingFile, setCreatingFile] = useState(false);
@@ -221,11 +267,10 @@ export function FileList() {
     !dirContents ||
     (dirContents.files.length === 0 && dirContents.subdirs.length === 0);
 
-  const displayPath = selectedDir
-    ? projectRoot
-      ? selectedDir.replace(projectRoot, "").replace(/^[\\/]/, "") || "/"
-      : selectedDir
-    : null;
+  const breadcrumbs: Breadcrumb[] =
+    selectedDir && projectRoot
+      ? buildBreadcrumbs(selectedDir, projectRoot)
+      : [];
 
   async function handleCreateFile(name: string) {
     setCreatingFile(false);
@@ -295,9 +340,38 @@ export function FileList() {
     <div className="filelist">
       {/* ── Toolbar ────────────────────────────────────────────────── */}
       <div className="filelist__toolbar">
-        <span className="filelist__path" title={selectedDir}>
-          {displayPath}
-        </span>
+        <nav className="filelist__breadcrumb" aria-label="Asset folder navigation">
+          <ol className="filelist__breadcrumb-list">
+            {breadcrumbs.map((crumb, idx) => {
+              const isLast = idx === breadcrumbs.length - 1;
+              return (
+                <li key={crumb.path} className="filelist__breadcrumb-item">
+                  {idx > 0 && (
+                    <span className="filelist__breadcrumb-sep" aria-hidden="true">/</span>
+                  )}
+                  {isLast ? (
+                    <span
+                      className="filelist__breadcrumb-current"
+                      aria-current="page"
+                      title={crumb.path}
+                    >
+                      {crumb.label}
+                    </span>
+                  ) : (
+                    <button
+                      className="filelist__breadcrumb-btn"
+                      title={crumb.path}
+                      onClick={() => selectDir(crumb.path)}
+                      type="button"
+                    >
+                      {crumb.label}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
         <div className="filelist__toolbar-actions">
           <button
             className="filelist__toolbar-btn"
