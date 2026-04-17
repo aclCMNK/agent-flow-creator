@@ -190,12 +190,46 @@ export function MarkdownEditor() {
           {activeTab.panel === "editor" && (
             <div className="md-editor__monaco-wrap">
               {/* ── FALLBACK textarea (Monaco deshabilitado) ─────────────── */}
+              {/*
+               * COLOR ELEGIDO: background usa `--color-bg` (#0f1117) porque es el
+               * tono más oscuro del design system y el más cercano al fondo de
+               * Monaco vs-dark (#1e1e1e). El tabbar del editor ya usa este mismo
+               * fondo, por lo que visualmente el textarea queda integrado.
+               * Si en el futuro se prefiere un tono más elevado (tier surface),
+               * cambiar a `--color-surface-2` (#232637) — que es lo que usa el
+               * panel de preview de markdown.
+               *
+               * PARA REVERTIR A MONACO: eliminar este bloque y descomentar
+               * el bloque <MonacoEditor /> de abajo.
+               */}
               <textarea
                 key={activeTab.filePath}
                 value={activeTab.content}
                 onChange={(e) => updateTabContent(activeTab.filePath, e.target.value)}
                 placeholder="(Modo simple: editor markdown temporal, Monaco deshabilitado)"
-                style={{ width: "100%", height: "100%", resize: "none", boxSizing: "border-box" }}
+                style={{
+                  // Dimensiones — igual que Monaco: ocupa todo el wrap
+                  width: "100%",
+                  height: "100%",
+                  resize: "none",
+                  boxSizing: "border-box",
+
+                  // Fondo — #0f1117 (--color-bg): el tono más oscuro del sistema,
+                  // equivalente visual a Monaco vs-dark. Sin borde propio para no
+                  // romper el encuadre del .md-editor__monaco-wrap.
+                  background: "var(--color-bg)",
+                  border: "none",
+                  outline: "none",
+
+                  // Tipografía — replica la config de Monaco
+                  color: "var(--color-text)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "13px",
+                  lineHeight: "1.6",
+
+                  // Espaciado — idéntico al padding de Monaco { top: 12, bottom: 12 }
+                  padding: "12px 16px",
+                }}
               />
 
               {/* ── Monaco (comentado por hotfix) ─────────────────────────
