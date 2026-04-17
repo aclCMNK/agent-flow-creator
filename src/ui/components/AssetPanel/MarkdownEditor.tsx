@@ -14,7 +14,9 @@
  */
 
 import { useEffect, useCallback, useRef } from "react";
-import MonacoEditor from "@monaco-editor/react";
+// HOTFIX: MonacoEditor temporalmente deshabilitado por bloqueo en build/Electron.
+// Revertir cuando Monaco esté resuelto: descomentar el import y restaurar el bloque <MonacoEditor />.
+// import MonacoEditor from "@monaco-editor/react";
 import { marked } from "marked";
 import { useAssetStore } from "../../store/assetStore.ts";
 import type { AssetEditorTab } from "../../store/assetStore.ts";
@@ -175,9 +177,28 @@ export function MarkdownEditor() {
             </div>
           </div>
 
-          {/* Panel: Monaco Editor */}
+          {/* Panel: Editor ─────────────────────────────────────────────────
+           * HOTFIX (workaround temporal) — Monaco deshabilitado por bloqueo
+           * con build/Electron. Se reemplaza con un <textarea> simple que
+           * mantiene el mismo value/onChange para revertir fácilmente.
+           *
+           * PARA REVERTIR:
+           *   1. Descomentar el import de MonacoEditor arriba.
+           *   2. Eliminar el bloque <textarea> de abajo.
+           *   3. Descomentar el bloque <MonacoEditor /> de abajo.
+           * ─────────────────────────────────────────────────────────────── */}
           {activeTab.panel === "editor" && (
             <div className="md-editor__monaco-wrap">
+              {/* ── FALLBACK textarea (Monaco deshabilitado) ─────────────── */}
+              <textarea
+                key={activeTab.filePath}
+                value={activeTab.content}
+                onChange={(e) => updateTabContent(activeTab.filePath, e.target.value)}
+                placeholder="(Modo simple: editor markdown temporal, Monaco deshabilitado)"
+                style={{ width: "100%", height: "100%", resize: "none", boxSizing: "border-box" }}
+              />
+
+              {/* ── Monaco (comentado por hotfix) ─────────────────────────
               <MonacoEditor
                 key={activeTab.filePath}
                 language="markdown"
@@ -201,6 +222,7 @@ export function MarkdownEditor() {
                   smoothScrolling: true,
                 }}
               />
+              ── fin Monaco comentado ───────────────────────────────────── */}
             </div>
           )}
 
