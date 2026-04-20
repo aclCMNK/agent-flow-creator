@@ -1,8 +1,8 @@
-# Exploration: Left Panel "Sync Tasks" Button Implementation
+# Exploration: Left Panel "Sync Delegations" Button Implementation
 
 **Date**: 2026-04-16  
 **Status**: ✅ EXPLORATION COMPLETE  
-**Topic**: Add "Sync Tasks" button to left panel sidebar for syncing `permissions > task` fields across delegating agents  
+**Topic**: Add "Sync Delegations" button to left panel sidebar for syncing `permissions > task` fields across delegating agents  
 **Investigator**: SDD Explorer
 
 ---
@@ -111,7 +111,7 @@ interface AgentLink {
 ```
 
 **Sync Logic Needed**:
-- When user clicks "Sync Tasks", iterate all agents
+- When user clicks "Sync Delegations", iterate all agents
 - For each agent that has outgoing "Delegation" links:
   - Read current `.adata` file
   - For each delegation link, update/create `permissions.tasks` structure with:
@@ -125,7 +125,7 @@ interface AgentLink {
 
 ### Frontend Components
 - **`src/ui/App.tsx`** — EditorView sidebar header (lines 203-238)
-  - Where to add the "Sync Tasks" button
+  - Where to add the "Sync Delegations" button
   - Access to `flowAgents` and `links` from store
   
 - **`src/ui/components/AgentTreeItem.tsx`** — Individual agent rows
@@ -164,7 +164,7 @@ interface AgentLink {
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ UI: Left Panel "Sync Tasks" button                                      │
+│ UI: Left Panel "Sync Delegations" button                                      │
 │ Location: src/ui/App.tsx lines 206-238 (sidebar header)                │
 └────────────────────────┬────────────────────────────────────────────────┘
                          │ onClick
@@ -251,9 +251,9 @@ interface AgentLink {
      className="editor-view__sync-tasks-btn"
      onClick={() => syncTaskPermissions()}
      title="Sync all task delegations to .adata permissions"
-     aria-label="Sync Tasks"
+     aria-label="Sync Delegations"
    >
-     🔄 Sync Tasks
+     🔄 Sync Delegations
    </button>
    ```
 
@@ -319,7 +319,7 @@ interface AgentLink {
    - Ensure all `.adata` files have up-to-date `permissions.tasks`
    - Then export normally
 
-2. User doesn't need to manually click "Sync Tasks"
+2. User doesn't need to manually click "Sync Delegations"
    - It happens automatically during export
 
 **Pros**:
@@ -445,7 +445,7 @@ interface AgentLink {
      disabled={flowAgents.length === 0}
      title="Sync task delegations to .adata permissions"
    >
-     🔄 Sync Tasks
+     🔄 Sync Delegations
    </button>
    ```
 
@@ -495,7 +495,7 @@ interface AgentLink {
 > 
 > 1. **Add sync logic in the backend** (new handler to read/update delegation info from `.adata` files)
 > 2. **Add IPC channel** for the renderer to call the sync handler
-> 3. **Add a button to the sidebar header** with a clear label (🔄 Sync Tasks)
+> 3. **Add a button to the sidebar header** with a clear label (🔄 Sync Delegations)
 > 4. **Extend the permissions schema** to include delegation task metadata
 > 
 > The recommended approach is a simple button that syncs all agents' task delegations on-demand. Clicking it will:
