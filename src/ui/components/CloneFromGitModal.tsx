@@ -3,22 +3,24 @@
  *
  * Modal dialog for cloning a project from a Git repository.
  *
- * UI only — no real cloning logic is implemented yet.
- *
  * Fields:
- *   1. Repository URL  — free text, typed by the user
+ *   1. Repository URL  — free text; validated for Git URL format
  *   2. Repo name       — read-only, auto-derived from the URL
  *   3. Directory       — native folder picker (starts at home dir)
  *
  * Buttons:
- *   - Cancel  → closes modal, resets form
- *   - Clone   → placeholder (no-op for now)
+ *   - Cancel  → closes modal, resets form (disabled while cloning)
+ *   - Clone   → enabled only when URL is valid AND a directory is selected
+ *
+ * Clone operation states: idle → cloning → success | error
  *
  * Reuses the shared modal CSS classes (.modal-backdrop, .modal, .modal__*,
  * .form-field__*, .btn) established by NewProjectModal.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { validateGitUrl } from "../utils/gitUrlUtils.ts";
+import type { CloneRepositoryResult } from "../../electron/bridge.types.ts";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -26,23 +28,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
  * Derives a repository name from a Git URL.
  * Strips trailing ".git" and returns the last path segment.
  * Returns an empty string if the URL is blank or unparseable.
- *
- * Examples:
- *   "https://github.com/org/my-repo.git" → "my-repo"
- *   "git@github.com:org/my-repo.git"     → "my-repo"
- *   "https://github.com/org/my-repo"     → "my-repo"
  */
 function deriveRepoName(url: string): string {
 	const trimmed = url.trim();
 	if (!trimmed) return "";
-
-	// Remove trailing slash(es) before processing
 	const normalized = trimmed.replace(/\/+$/, "");
-
-	// Extract the last path segment (works for both https and ssh URLs)
 	const lastSegment = normalized.split(/[/:]/g).pop() ?? "";
-
-	// Strip .git suffix
 	return lastSegment.replace(/\.git$/i, "");
 }
 
@@ -52,7 +43,6 @@ function deriveRepoName(url: string): string {
  */
 function getHomeDir(): string {
 	try {
-		// window.appPaths is exposed by the preload script via contextBridge
 		return (
 			(window as unknown as { appPaths?: { home?: string } }).appPaths?.home ??
 			"/"
@@ -62,22 +52,73 @@ function getHomeDir(): string {
 	}
 }
 
+/**
+ * Returns the agentsFlow bridge if available, or undefined.
+ */
+function getBridge() {
+	try {
+		return (
+			window as unknown as {
+				agentsFlow?: {
+					openFolderDialog?: () => Promise<string | null>;
+					cloneRepository?: (req: {
+						url: string;
+						destDir: string;
+						repoName?: string;
+					}) => Promise<CloneRepositoryResult>;
+				};
+			}
+		).agentsFlow;
+	} catch {
+		return undefined;
+	}
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+type ClonePhase = "idle" | "cloning" | "success" | "error";
+
 // ── Props ──────────────────────────────────────────────────────────────────
 
 interface CloneFromGitModalProps {
 	isOpen: boolean;
 	onClose: () => void;
+	/** Called with the cloned directory path on successful clone */
+	onCloned?: (clonedPath: string) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
+export function CloneFromGitModal({
+	isOpen,
+	onClose,
+	onCloned,
+}: CloneFromGitModalProps) {
 	// ── Form state ─────────────────────────────────────────────────────────
 	const [repoUrl, setRepoUrl] = useState("");
 	const [selectedDir, setSelectedDir] = useState<string | null>(null);
 
+	// ── Validation state ───────────────────────────────────────────────────
+	/** Whether the URL field has been touched (to delay showing errors) */
+	const [urlTouched, setUrlTouched] = useState(false);
+	const urlValidation = validateGitUrl(repoUrl);
+
+	// ── Clone operation state ──────────────────────────────────────────────
+	const [phase, setPhase] = useState<ClonePhase>("idle");
+	const [cloneError, setCloneError] = useState<string | null>(null);
+	const [clonedPath, setClonedPath] = useState<string | null>(null);
+
 	// ── Derived ────────────────────────────────────────────────────────────
 	const repoName = deriveRepoName(repoUrl);
+	const isCloning = phase === "cloning";
+
+	/**
+	 * Clone button is enabled when:
+	 *   - URL is syntactically valid
+	 *   - A destination directory is selected
+	 *   - No clone operation is already in progress
+	 */
+	const canClone = urlValidation.valid && selectedDir !== null && !isCloning;
 
 	// ── Refs ───────────────────────────────────────────────────────────────
 	const urlInputRef = useRef<HTMLInputElement>(null);
@@ -87,38 +128,37 @@ export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
 		if (isOpen) {
 			setRepoUrl("");
 			setSelectedDir(null);
+			setUrlTouched(false);
+			setPhase("idle");
+			setCloneError(null);
+			setClonedPath(null);
 			setTimeout(() => urlInputRef.current?.focus(), 50);
 		}
 	}, [isOpen]);
 
-	// ── Escape key closes modal ────────────────────────────────────────────
+	// ── Escape key closes modal (unless cloning) ───────────────────────────
 	useEffect(() => {
 		if (!isOpen) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onClose();
+			if (e.key === "Escape" && !isCloning) onClose();
 		};
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [isOpen, onClose]);
+	}, [isOpen, isCloning, onClose]);
 
-	// ── Backdrop click closes modal ────────────────────────────────────────
+	// ── Backdrop click closes modal (unless cloning) ───────────────────────
 	const handleBackdropClick = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
-			if (e.target === e.currentTarget) onClose();
+			if (e.target === e.currentTarget && !isCloning) onClose();
 		},
-		[onClose],
+		[isCloning, onClose],
 	);
 
 	// ── Directory picker ───────────────────────────────────────────────────
 	const handleChooseDir = useCallback(async () => {
 		try {
-			const bridge = (
-				window as unknown as {
-					agentsFlow?: { openFolderDialog?: () => Promise<string | null> };
-				}
-			).agentsFlow;
+			const bridge = getBridge();
 			if (!bridge?.openFolderDialog) return;
-
 			const dir = await bridge.openFolderDialog();
 			if (dir) setSelectedDir(dir);
 		} catch {
@@ -126,16 +166,78 @@ export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
 		}
 	}, []);
 
-	// ── Clone (placeholder — no real logic yet) ────────────────────────────
-	const handleClone = useCallback((e: React.FormEvent) => {
-		e.preventDefault();
-		// TODO: implement real clone logic in a future iteration
-	}, []);
+	// ── URL field change ───────────────────────────────────────────────────
+	const handleUrlChange = useCallback(
+		(e: React.ChangeEvent<HTMLInputElement>) => {
+			setRepoUrl(e.target.value);
+			// Reset clone error when user edits the URL
+			if (phase === "error") {
+				setPhase("idle");
+				setCloneError(null);
+			}
+		},
+		[phase],
+	);
+
+	// ── Done (post-success) ────────────────────────────────────────────────
+	const handleDone = useCallback(() => {
+		if (clonedPath && onCloned) {
+			onCloned(clonedPath);
+		}
+		onClose();
+	}, [clonedPath, onCloned, onClose]);
+
+	// ── Clone ──────────────────────────────────────────────────────────────
+	const handleClone = useCallback(
+		async (e: React.FormEvent) => {
+			e.preventDefault();
+			if (!canClone || !selectedDir) return;
+
+			const bridge = getBridge();
+			if (!bridge?.cloneRepository) {
+				setPhase("error");
+				setCloneError(
+					"Git clone is not available in this environment. " +
+						"Make sure the Electron bridge is loaded.",
+				);
+				return;
+			}
+
+			setPhase("cloning");
+			setCloneError(null);
+
+			try {
+				const result = await bridge.cloneRepository({
+					url: repoUrl.trim(),
+					destDir: selectedDir,
+					repoName: repoName || undefined,
+				});
+
+				if (result.success && result.clonedPath) {
+					setPhase("success");
+					setClonedPath(result.clonedPath);
+				} else {
+					setPhase("error");
+					setCloneError(
+						result.error ?? "An unexpected error occurred during cloning.",
+					);
+				}
+			} catch (err) {
+				setPhase("error");
+				setCloneError(
+					err instanceof Error ? err.message : "An unexpected error occurred.",
+				);
+			}
+		},
+		[canClone, selectedDir, repoUrl, repoName, onCloned],
+	);
 
 	// ── Render ─────────────────────────────────────────────────────────────
 	if (!isOpen) return null;
 
-	const canClone = repoUrl.trim().length > 0 && selectedDir !== null;
+	/** Show URL format error only after the field has been touched and lost focus */
+	const showUrlError =
+		urlTouched && repoUrl.trim().length > 0 && !urlValidation.valid;
 
 	return (
 		<div
@@ -145,7 +247,7 @@ export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
 			aria-labelledby="clone-git-modal-title"
 			onClick={handleBackdropClick}
 		>
-			<div className="modal clone-git-modal" tabIndex={-1}>
+			<div className="modal" tabIndex={-1}>
 				{/* ── Header ──────────────────────────────────────────────── */}
 				<header className="modal__header">
 					<h2 className="modal__title" id="clone-git-modal-title">
@@ -155,6 +257,7 @@ export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
 						className="modal__close-btn"
 						onClick={onClose}
 						aria-label="Close dialog"
+						disabled={isCloning}
 					>
 						✕
 					</button>
@@ -174,13 +277,33 @@ export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
 							id="clone-git-url"
 							ref={urlInputRef}
 							type="url"
-							className="form-field__input"
+							className={[
+								"form-field__input",
+								showUrlError ? "form-field__input--error" : "",
+							]
+								.join(" ")
+								.trim()}
 							value={repoUrl}
-							onChange={(e) => setRepoUrl(e.target.value)}
+							onChange={handleUrlChange}
+							onBlur={() => setUrlTouched(true)}
 							placeholder="https://github.com/org/repo.git"
 							autoComplete="off"
 							spellCheck={false}
+							disabled={isCloning}
+							aria-describedby={
+								showUrlError ? "clone-git-url-error" : undefined
+							}
+							aria-invalid={showUrlError ? "true" : undefined}
 						/>
+						{showUrlError && (
+							<span
+								id="clone-git-url-error"
+								className="form-field__error"
+								role="alert"
+							>
+								{urlValidation.error}
+							</span>
+						)}
 					</div>
 
 					{/* Repo name — read-only, auto-derived */}
@@ -211,7 +334,7 @@ export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
 								*
 							</span>
 						</label>
-						<p className="form-field__hint form-field__hint--info">
+						<p className="form-field__hint">
 							The repository will be cloned into a subfolder inside the selected
 							location. Starts in your home directory ({getHomeDir()}).
 						</p>
@@ -233,6 +356,7 @@ export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
 								type="button"
 								className="btn btn--secondary form-field__dir-btn"
 								onClick={handleChooseDir}
+								disabled={isCloning}
 							>
 								Choose Folder
 							</button>
@@ -251,18 +375,68 @@ export function CloneFromGitModal({ isOpen, onClose }: CloneFromGitModalProps) {
 						)}
 					</div>
 
+					{/* ── Clone status messages ──────────────────────────────── */}
+
+					{phase === "cloning" && (
+						<div
+							className="form-field__status form-field__status--loading"
+							role="status"
+							aria-live="polite"
+						>
+							<span className="form-field__status-spinner" aria-hidden="true" />
+							Cloning repository… This may take a moment.
+						</div>
+					)}
+
+					{phase === "success" && clonedPath && (
+						<div
+							className="form-field__status form-field__status--success"
+							role="status"
+							aria-live="polite"
+						>
+							✓ Repository cloned successfully into <code>{clonedPath}</code>
+						</div>
+					)}
+
+					{phase === "error" && cloneError && (
+						<div
+							className="form-field__status form-field__status--error"
+							role="alert"
+							aria-live="assertive"
+						>
+							⚠ {cloneError}
+						</div>
+					)}
+
 					{/* ── Footer ──────────────────────────────────────────────── */}
 					<footer className="modal__footer">
-						<button type="button" className="btn btn--ghost" onClick={onClose}>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							className="btn btn--primary"
-							disabled={!canClone}
-						>
-							Clone
-						</button>
+						{phase === "success" ? (
+							<button
+								type="button"
+								className="btn btn--primary"
+								onClick={handleDone}
+							>
+								Done
+							</button>
+						) : (
+							<>
+								<button
+									type="button"
+									className="btn btn--ghost"
+									onClick={onClose}
+									disabled={isCloning}
+								>
+									Cancel
+								</button>
+								<button
+									type="submit"
+									className="btn btn--primary"
+									disabled={!canClone}
+								>
+									{isCloning ? "Cloning…" : "Clone"}
+								</button>
+							</>
+						)}
 					</footer>
 				</form>
 			</div>

@@ -865,6 +865,33 @@ button:disabled {
 	opacity: 0.8;
 }
 
+/* ── Git remote origin badge ───────────────────────────────────────────────── */
+
+.git-remote-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 11px;
+	color: var(--color-text-muted, #888);
+	background: rgba(0, 0, 0, 0.15);
+	border-radius: 4px;
+	padding: 2px 8px;
+	max-width: 280px;
+	overflow: hidden;
+	white-space: nowrap;
+	cursor: default;
+	user-select: text;
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+.git-remote-url {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
 .editor-view__topbar-actions {
 	display: flex;
 	gap: 8px;

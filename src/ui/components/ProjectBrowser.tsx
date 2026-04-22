@@ -32,6 +32,7 @@ export function ProjectBrowser() {
 		validateProject,
 		loadRecentProjects,
 		clearError,
+		openProjectAfterClone,
 	} = useProjectStore();
 
 	const [showNewProjectModal, setShowNewProjectModal] = useState(false);
@@ -205,6 +206,7 @@ export function ProjectBrowser() {
 			<CloneFromGitModal
 				isOpen={showCloneGitModal}
 				onClose={() => setShowCloneGitModal(false)}
+				onCloned={(clonedPath) => openProjectAfterClone(clonedPath)}
 			/>
 		</div>
 	);

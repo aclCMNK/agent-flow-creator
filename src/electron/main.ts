@@ -52,101 +52,106 @@
  */
 
 import { app, BrowserWindow, Menu, session } from "electron";
-import path,{ join } from "node:path";
+import path, { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { registerIpcHandlers } from "./ipc-handlers.ts";
+import { registerGitHandlers } from "./ipc-handlers.ts";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // ── Environment detection ──────────────────────────────────────────────────
 
-const isDev = process.env["NODE_ENV"] === "development" || process.env["ELECTRON_DEV"] === "1";
-const RENDERER_DEV_URL = process.env["VITE_DEV_SERVER_URL"] ?? "http://localhost:5173";
+const isDev =
+	process.env["NODE_ENV"] === "development" ||
+	process.env["ELECTRON_DEV"] === "1";
+const RENDERER_DEV_URL =
+	process.env["VITE_DEV_SERVER_URL"] ?? "http://localhost:5173";
 
 // ── Window creation ────────────────────────────────────────────────────────
 
 function createWindow(): BrowserWindow {
-  // vite-plugin-electron/simple detects "type": "module" in package.json and
-  // would compile the preload as .mjs, but Electron's preload context requires
-  // CommonJS (it uses require("electron") internally). We force CJS output with
-  // the .cjs extension in vite.config.ts — that extension opts out of ESM even
-  // when the package type is "module".
-  const preloadPath = join(__dirname, "preload.cjs"); // compiled as CJS by Vite
+	// vite-plugin-electron/simple detects "type": "module" in package.json and
+	// would compile the preload as .mjs, but Electron's preload context requires
+	// CommonJS (it uses require("electron") internally). We force CJS output with
+	// the .cjs extension in vite.config.ts — that extension opts out of ESM even
+	// when the package type is "module".
+	const preloadPath = join(__dirname, "preload.cjs"); // compiled as CJS by Vite
 
-  console.log("[main] createWindow: __dirname =", __dirname);
-  console.log("[main] createWindow: preloadPath =", preloadPath);
+	console.log("[main] createWindow: __dirname =", __dirname);
+	console.log("[main] createWindow: preloadPath =", preloadPath);
 
-  // Validate preload exists before creating the window (catches config drift early)
-  if (!existsSync(preloadPath)) {
-    console.error(
-      `[main] FATAL: preload script not found at "${preloadPath}". ` +
-      `Run 'vite build' first or check the vite.config.ts preload output dir. ` +
-      `Expected: dist/electron/preload.cjs`
-    );
-  } else {
-    console.log("[main] preload found ✓");
-  }
-console.log('__dirname:', __dirname);
-console.log('icon full path:', path.join(__dirname, '../assets/blueico.png'));
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
-	icon: process.platform === 'win32'
-    ? path.join(__dirname, '../assets/blueico.ico')
-    : process.platform === 'darwin'
-      ? path.join(__dirname, '../assets/blueico_16.icns')
-      : path.join(__dirname, '../assets/blueico_16.png'),
-    title: "AgentsFlow - Visual AI Agentic workflow",
-    show: false, // Show after ready-to-show to avoid flash of unstyled content
-    autoHideMenuBar: true,  // Hide the native menu bar (no standard Electron menu)
-    webPreferences: {
-      preload: preloadPath,          // Absolute path → dist/electron/preload.cjs
-      contextIsolation: true,        // REQUIRED: renderer cannot touch Node APIs
-      nodeIntegration: false,        // REQUIRED: no require() in renderer
-      sandbox: false,                // Preload needs Node for IPC (ipcRenderer)
-      webSecurity: true,             // No cross-origin relaxation
-      allowRunningInsecureContent: false,
-    },
-  });
+	// Validate preload exists before creating the window (catches config drift early)
+	if (!existsSync(preloadPath)) {
+		console.error(
+			`[main] FATAL: preload script not found at "${preloadPath}". ` +
+				`Run 'vite build' first or check the vite.config.ts preload output dir. ` +
+				`Expected: dist/electron/preload.cjs`,
+		);
+	} else {
+		console.log("[main] preload found ✓");
+	}
+	console.log("__dirname:", __dirname);
+	console.log("icon full path:", path.join(__dirname, "../assets/blueico.png"));
+	const win = new BrowserWindow({
+		width: 1280,
+		height: 800,
+		minWidth: 800,
+		minHeight: 600,
+		icon:
+			process.platform === "win32"
+				? path.join(__dirname, "../assets/blueico.ico")
+				: process.platform === "darwin"
+					? path.join(__dirname, "../assets/blueico_16.icns")
+					: path.join(__dirname, "../assets/blueico_16.png"),
+		title: "AgentsFlow - Visual AI Agentic workflow",
+		show: false, // Show after ready-to-show to avoid flash of unstyled content
+		autoHideMenuBar: true, // Hide the native menu bar (no standard Electron menu)
+		webPreferences: {
+			preload: preloadPath, // Absolute path → dist/electron/preload.cjs
+			contextIsolation: true, // REQUIRED: renderer cannot touch Node APIs
+			nodeIntegration: false, // REQUIRED: no require() in renderer
+			sandbox: false, // Preload needs Node for IPC (ipcRenderer)
+			webSecurity: true, // No cross-origin relaxation
+			allowRunningInsecureContent: false,
+		},
+	});
 
-  // Log the webPreferences actually used — useful for diagnosing bridge issues.
-  // If contextIsolation is false or nodeIntegration is true, window.folderExplorer
-  // and window.agentsFlow will be unavailable (contextBridge is a no-op without isolation).
-  console.log("[main] BrowserWindow webPreferences:", {
-    preload:              preloadPath,
-    contextIsolation:     true,
-    nodeIntegration:      false,
-    sandbox:              false,
-  });
+	// Log the webPreferences actually used — useful for diagnosing bridge issues.
+	// If contextIsolation is false or nodeIntegration is true, window.folderExplorer
+	// and window.agentsFlow will be unavailable (contextBridge is a no-op without isolation).
+	console.log("[main] BrowserWindow webPreferences:", {
+		preload: preloadPath,
+		contextIsolation: true,
+		nodeIntegration: false,
+		sandbox: false,
+	});
 
-  // ── Load content ──────────────────────────────────────────────────────────
+	// ── Load content ──────────────────────────────────────────────────────────
 
-  if (isDev) {
-    win.loadURL(RENDERER_DEV_URL);
-    win.webContents.openDevTools({ mode: "detach" });
-  } else {
-    // Production: load from the built dist/ui/index.html
-    win.loadFile(join(__dirname, "../ui/index.html"));
-  }
+	if (isDev) {
+		win.loadURL(RENDERER_DEV_URL);
+		win.webContents.openDevTools({ mode: "detach" });
+	} else {
+		// Production: load from the built dist/ui/index.html
+		win.loadFile(join(__dirname, "../ui/index.html"));
+	}
 
-  // ── Diagnostic: scan window.folderExplorer after renderer loads ───────────
-  //
-  // This log runs in the RENDERER context (via executeJavaScript) and reports
-  // whether window.folderExplorer was correctly injected by the preload.
-  // Check the renderer DevTools console (or the Electron console) for output.
-  //
-  // If you see "MISSING" here, the most common causes are:
-  //   1. preloadPath does not exist on disk (check "[main] FATAL" above).
-  //   2. contextIsolation is false (the bridge is a no-op without isolation).
-  //   3. The preload threw an error before reaching exposeInMainWorld.
-  //      → Check the preload console for "[preload] module evaluated" log.
-  win.webContents.on("did-finish-load", () => {
-    win.webContents
-      .executeJavaScript(
-        `(function() {
+	// ── Diagnostic: scan window.folderExplorer after renderer loads ───────────
+	//
+	// This log runs in the RENDERER context (via executeJavaScript) and reports
+	// whether window.folderExplorer was correctly injected by the preload.
+	// Check the renderer DevTools console (or the Electron console) for output.
+	//
+	// If you see "MISSING" here, the most common causes are:
+	//   1. preloadPath does not exist on disk (check "[main] FATAL" above).
+	//   2. contextIsolation is false (the bridge is a no-op without isolation).
+	//   3. The preload threw an error before reaching exposeInMainWorld.
+	//      → Check the preload console for "[preload] module evaluated" log.
+	win.webContents.on("did-finish-load", () => {
+		win.webContents
+			.executeJavaScript(
+				`(function() {
           var fe = window.folderExplorer;
           var af = window.agentsFlow;
           return {
@@ -160,116 +165,136 @@ console.log('icon full path:', path.join(__dirname, '../assets/blueico.png'));
               available: typeof af !== 'undefined',
             },
           };
-        })()`
-      )
-      .then((result: unknown) => {
-        console.log("[main] renderer bridge scan (did-finish-load):", JSON.stringify(result, null, 2));
-        const r = result as {
-          folderExplorer: { available: boolean; list: boolean; stat: boolean; readChildren: boolean };
-          agentsFlow:     { available: boolean };
-        };
-        if (!r.folderExplorer.available) {
-          console.error(
-            "[main] DIAGNOSTIC: window.folderExplorer is MISSING in renderer. " +
-            "Check that the preload compiled correctly (dist/electron/preload.cjs) " +
-            "and that contextIsolation:true + nodeIntegration:false are set."
-          );
-        } else if (!r.folderExplorer.list || !r.folderExplorer.stat || !r.folderExplorer.readChildren) {
-          console.warn(
-            "[main] DIAGNOSTIC: window.folderExplorer is present but some methods are missing:",
-            r.folderExplorer
-          );
-        } else {
-          console.log("[main] window.folderExplorer ✓ (list, stat, readChildren all available)");
-        }
-        if (!r.agentsFlow.available) {
-          console.error("[main] DIAGNOSTIC: window.agentsFlow is MISSING in renderer.");
-        } else {
-          console.log("[main] window.agentsFlow ✓");
-        }
-      })
-      .catch((err: unknown) => {
-        console.warn("[main] bridge scan executeJavaScript failed:", err);
-      });
-  });
+        })()`,
+			)
+			.then((result: unknown) => {
+				console.log(
+					"[main] renderer bridge scan (did-finish-load):",
+					JSON.stringify(result, null, 2),
+				);
+				const r = result as {
+					folderExplorer: {
+						available: boolean;
+						list: boolean;
+						stat: boolean;
+						readChildren: boolean;
+					};
+					agentsFlow: { available: boolean };
+				};
+				if (!r.folderExplorer.available) {
+					console.error(
+						"[main] DIAGNOSTIC: window.folderExplorer is MISSING in renderer. " +
+							"Check that the preload compiled correctly (dist/electron/preload.cjs) " +
+							"and that contextIsolation:true + nodeIntegration:false are set.",
+					);
+				} else if (
+					!r.folderExplorer.list ||
+					!r.folderExplorer.stat ||
+					!r.folderExplorer.readChildren
+				) {
+					console.warn(
+						"[main] DIAGNOSTIC: window.folderExplorer is present but some methods are missing:",
+						r.folderExplorer,
+					);
+				} else {
+					console.log(
+						"[main] window.folderExplorer ✓ (list, stat, readChildren all available)",
+					);
+				}
+				if (!r.agentsFlow.available) {
+					console.error(
+						"[main] DIAGNOSTIC: window.agentsFlow is MISSING in renderer.",
+					);
+				} else {
+					console.log("[main] window.agentsFlow ✓");
+				}
+			})
+			.catch((err: unknown) => {
+				console.warn("[main] bridge scan executeJavaScript failed:", err);
+			});
+	});
 
-  // ── Window lifecycle ───────────────────────────────────────────────────────
+	// ── Window lifecycle ───────────────────────────────────────────────────────
 
-  win.once("ready-to-show", () => {
-    console.log("[main] window ready-to-show → maximizing and showing");
-    win.maximize(); // Always open maximized (fills the full desktop/screen area)
-    win.show();
-  });
+	win.once("ready-to-show", () => {
+		console.log("[main] window ready-to-show → maximizing and showing");
+		win.maximize(); // Always open maximized (fills the full desktop/screen area)
+		win.show();
+	});
 
-  win.on("closed", () => {
-    // Cleanup if needed
-  });
+	win.on("closed", () => {
+		// Cleanup if needed
+	});
 
-  return win;
+	return win;
 }
 
 // ── App lifecycle ──────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
-  console.log("[main] app ready. isDev =", isDev, "| renderer URL =", isDev ? RENDERER_DEV_URL : "dist/ui/index.html");
+	console.log(
+		"[main] app ready. isDev =",
+		isDev,
+		"| renderer URL =",
+		isDev ? RENDERER_DEV_URL : "dist/ui/index.html",
+	);
 
-  // Remove the default application menu entirely (all platforms)
-  Menu.setApplicationMenu(null);
+	// Remove the default application menu entirely (all platforms)
+	Menu.setApplicationMenu(null);
 
-  // Register a strict Content Security Policy for the renderer
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        "Content-Security-Policy": [
-          isDev
-            // Dev: allow Vite HMR websocket + inline scripts for React DevTools + Monaco eval + blob workers
-            ? "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* ws://localhost:*; worker-src 'self' blob:"
-            // Prod: allow self + unsafe-eval for Monaco's AMD loader (vs/loader.js uses eval internally)
-            : "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:",
-        ],
-      },
-    });
-  });
+	// Register a strict Content Security Policy for the renderer
+	session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+		callback({
+			responseHeaders: {
+				...details.responseHeaders,
+				"Content-Security-Policy": [
+					isDev
+						? // Dev: allow Vite HMR websocket + inline scripts for React DevTools + Monaco eval + blob workers
+							"default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* ws://localhost:*; worker-src 'self' blob:"
+						: // Prod: allow self + unsafe-eval for Monaco's AMD loader (vs/loader.js uses eval internally)
+							"default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:",
+				],
+			},
+		});
+	});
 
-  // Register all IPC handlers before creating the window
-  registerIpcHandlers();
-  console.log("[main] IPC handlers registered");
+	// Register all IPC handlers before creating the window
+	registerIpcHandlers();
+	registerGitHandlers();
+	console.log("[main] IPC handlers registered");
 
-  createWindow();
+	createWindow();
 
-  // macOS: re-create window when dock icon is clicked and no windows are open
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
+	// macOS: re-create window when dock icon is clicked and no windows are open
+	app.on("activate", () => {
+		if (BrowserWindow.getAllWindows().length === 0) {
+			createWindow();
+		}
+	});
 });
 
 // Quit when all windows are closed, except on macOS
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+	if (process.platform !== "darwin") {
+		app.quit();
+	}
 });
 
 // ── Security: block navigation to external URLs ────────────────────────────
 
 app.on("web-contents-created", (_event, contents) => {
-  contents.on("will-navigate", (event, url) => {
-    // Allow only the renderer URL (Vite dev server or file://)
-    const allowedOrigins = ["http://localhost:5173", "file://"];
-    const isAllowed = allowedOrigins.some(
-      (origin) => url.startsWith(origin)
-    );
-    if (!isAllowed) {
-      console.warn(`[security] Blocked navigation to: ${url}`);
-      event.preventDefault();
-    }
-  });
+	contents.on("will-navigate", (event, url) => {
+		// Allow only the renderer URL (Vite dev server or file://)
+		const allowedOrigins = ["http://localhost:5173", "file://"];
+		const isAllowed = allowedOrigins.some((origin) => url.startsWith(origin));
+		if (!isAllowed) {
+			console.warn(`[security] Blocked navigation to: ${url}`);
+			event.preventDefault();
+		}
+	});
 
-  contents.setWindowOpenHandler(({ url }) => {
-    console.warn(`[security] Blocked window.open to: ${url}`);
-    return { action: "deny" };
-  });
+	contents.setWindowOpenHandler(({ url }) => {
+		console.warn(`[security] Blocked window.open to: ${url}`);
+		return { action: "deny" };
+	});
 });
