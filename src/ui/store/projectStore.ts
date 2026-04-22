@@ -350,7 +350,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 	// ── Open project from path ─────────────────────────────────────────────
 
 	async openProject(projectDir) {
-		set({ isLoading: true, lastError: null });
+		// Clear git badge immediately so the UI never shows a stale remote
+		// from a previously opened project while this load is in flight.
+		set({ isLoading: true, lastError: null, gitRemoteOrigin: null });
 
 		try {
 			const bridge = getBridge();
@@ -370,14 +372,24 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 				});
 
 				// Detect Git remote origin in background — never blocks the UI.
-				// The store will update gitRemoteOrigin when the promise resolves.
+				// `requestedDir` is captured in the closure so that if the user
+				// switches to another project before this promise settles, the
+				// stale response is silently discarded (race-condition guard).
+				const requestedDir = projectDir;
 				bridge
 					.getGitRemoteOrigin(projectDir)
 					.then((remoteUrl) => {
-						set({ gitRemoteOrigin: remoteUrl ?? null });
+						// Only apply if the active project is still the one we queried.
+						const activeProject = get().project;
+						if (activeProject?.projectDir === requestedDir) {
+							set({ gitRemoteOrigin: remoteUrl ?? null });
+						}
 					})
 					.catch(() => {
-						set({ gitRemoteOrigin: null });
+						const activeProject = get().project;
+						if (activeProject?.projectDir === requestedDir) {
+							set({ gitRemoteOrigin: null });
+						}
 					});
 			} else {
 				// Load failed — show validation view with error list
