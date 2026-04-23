@@ -23,9 +23,16 @@ import { validateGitUrl, isValidGitUrl } from "../utils/gitUrlUtils.ts";
 import type { CloneRepositoryResult } from "../../electron/bridge.types.ts";
 import {
 	detectRepoVisibility,
+	parseRepoUrl,
+	type GitProvider,
+	type RepoVisibility,
 	type VisibilityStatus,
 } from "../utils/repoVisibility.ts";
 import { RepoVisibilityBadge } from "./RepoVisibilityBadge.tsx";
+import {
+	getClonePermission,
+	getCloneUIState,
+} from "../utils/clonePermission.ts";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -110,6 +117,10 @@ export function CloneFromGitModal({
 
 	// ── Visibility detection state ─────────────────────────────────────────
 	const [visibility, setVisibility] = useState<VisibilityStatus>("idle");
+	/** Provider detected from the URL — used by clonePermission logic */
+	const [provider, setProvider] = useState<GitProvider | null>(null);
+	/** Raw RepoVisibility result (excluding transient UI states) for permission logic */
+	const [repoVisibility, setRepoVisibility] = useState<RepoVisibility | null>(null);
 
 	/** Tracks component mounted state to avoid setState after unmount */
 	const mountedRef = useRef(true);
@@ -120,6 +131,13 @@ export function CloneFromGitModal({
 		};
 	}, []);
 
+	/**
+	 * Monotonically-increasing counter used to detect stale async responses.
+	 * Each time a new visibility check is started, the counter is incremented.
+	 * When the async result arrives, it is discarded if the counter has moved on.
+	 */
+	const visibilityRequestIdRef = useRef(0);
+
 	// ── Clone operation state ──────────────────────────────────────────────
 	const [phase, setPhase] = useState<ClonePhase>("idle");
 	const [cloneError, setCloneError] = useState<string | null>(null);
@@ -128,14 +146,31 @@ export function CloneFromGitModal({
 	// ── Derived ────────────────────────────────────────────────────────────
 	const repoName = deriveRepoName(repoUrl);
 	const isCloning = phase === "cloning";
+	/** True while the visibility check is in progress — blocks UI to prevent race conditions */
+	const isCheckingVisibility = visibility === "checking";
+
+	// ── Permission / UI state ──────────────────────────────────────────────
+	const clonePermission = getClonePermission(provider, repoVisibility);
+	const { buttonDisabled, errorMessage } = getCloneUIState(clonePermission);
 
 	/**
 	 * Clone button is enabled when:
 	 *   - URL is syntactically valid
 	 *   - A destination directory is selected
 	 *   - No clone operation is already in progress
+	 *   - Visibility check is not running (prevents race conditions)
+	 *   - Visibility has been checked (not idle with a valid URL) — prevents
+	 *     bypass via submit without triggering onBlur first
+	 *   - Permission logic does not block the action
 	 */
-	const canClone = urlValidation.valid && selectedDir !== null && !isCloning;
+	const visibilityPending = urlValidation.valid && visibility === "idle";
+	const canClone =
+		urlValidation.valid &&
+		selectedDir !== null &&
+		!isCloning &&
+		!isCheckingVisibility &&
+		!visibilityPending &&
+		!buttonDisabled;
 
 	// ── Refs ───────────────────────────────────────────────────────────────
 	const urlInputRef = useRef<HTMLInputElement>(null);
@@ -143,10 +178,14 @@ export function CloneFromGitModal({
 	// ── Reset form when modal opens ────────────────────────────────────────
 	useEffect(() => {
 		if (isOpen) {
+			// Invalidate any in-flight visibility check
+			visibilityRequestIdRef.current += 1;
 			setRepoUrl("");
 			setSelectedDir(null);
 			setUrlTouched(false);
 			setVisibility("idle");
+			setProvider(null);
+			setRepoVisibility(null);
 			setPhase("idle");
 			setCloneError(null);
 			setClonedPath(null);
@@ -188,7 +227,13 @@ export function CloneFromGitModal({
 	const handleUrlChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
 			setRepoUrl(e.target.value);
-			setVisibility("idle"); // reset badge on every keystroke
+			// Invalidate any in-flight visibility check so stale results are ignored
+			visibilityRequestIdRef.current += 1;
+			// Reset visibility, provider and permission state on every keystroke
+			// to prevent stale state from a previous detection
+			setVisibility("idle");
+			setProvider(null);
+			setRepoVisibility(null);
 			// Reset clone error when user edits the URL
 			if (phase === "error") {
 				setPhase("idle");
@@ -198,26 +243,51 @@ export function CloneFromGitModal({
 		[phase],
 	);
 
+	/**
+	 * Core visibility detection logic — shared between blur and submit.
+	 * Accepts the URL to check explicitly to avoid closure staleness.
+	 * Returns the RepoVisibility result, or null if aborted (URL changed / unmounted).
+	 *
+	 * Race-condition protection: increments the request counter before the
+	 * async call and discards the result if the counter has changed by the
+	 * time the promise resolves (i.e. the user changed the URL mid-flight).
+	 */
+	const runVisibilityCheck = useCallback(async (urlToCheck: string): Promise<import("../utils/repoVisibility.ts").RepoVisibility | "invalid" | null> => {
+		// Skip detection if URL is empty or syntactically invalid
+		if (!urlToCheck.trim() || !isValidGitUrl(urlToCheck)) {
+			setVisibility("idle");
+			setProvider(null);
+			setRepoVisibility(null);
+			return "invalid";
+		}
+
+		// Capture and increment the request ID for this check
+		visibilityRequestIdRef.current += 1;
+		const thisRequestId = visibilityRequestIdRef.current;
+
+		// Extract provider from the URL before the async call
+		const parsed = parseRepoUrl(urlToCheck);
+		const detectedProvider = parsed?.provider ?? null;
+		setProvider(detectedProvider);
+		setVisibility("checking");
+
+		const result = await detectRepoVisibility(urlToCheck);
+
+		// Guard: ignore result if modal was closed or URL changed during the async call
+		if (!mountedRef.current) return null;
+		if (visibilityRequestIdRef.current !== thisRequestId) return null;
+
+		setRepoVisibility(result);
+		// "not_found" (404) is treated as "private" in the badge UI
+		setVisibility(result === "not_found" ? "private" : result);
+		return result;
+	}, []);
+
 	// ── URL field blur — trigger visibility detection ──────────────────────
 	const handleUrlBlur = useCallback(async () => {
 		setUrlTouched(true);
-
-		// Skip detection if URL is empty or syntactically invalid
-		if (!repoUrl.trim() || !isValidGitUrl(repoUrl)) {
-			setVisibility("idle");
-			return;
-		}
-
-		setVisibility("checking");
-
-		const result = await detectRepoVisibility(repoUrl);
-
-		// Guard: ignore result if modal was closed during the async call
-		if (!mountedRef.current) return;
-
-		// "not_found" (404) is treated as "private" in the UI
-		setVisibility(result === "not_found" ? "private" : result);
-	}, [repoUrl]);
+		await runVisibilityCheck(repoUrl);
+	}, [repoUrl, runVisibilityCheck]);
 
 	// ── Done (post-success) ────────────────────────────────────────────────
 	const handleDone = useCallback(() => {
@@ -231,7 +301,36 @@ export function CloneFromGitModal({
 	const handleClone = useCallback(
 		async (e: React.FormEvent) => {
 			e.preventDefault();
-			if (!canClone || !selectedDir) return;
+			setUrlTouched(true);
+
+			// If visibility has not been checked yet (e.g. user never blurred the
+			// URL field), run the check now before proceeding. This prevents bypass
+			// via keyboard submit (Enter) without triggering onBlur.
+			let effectiveVisibilityResult = repoVisibility;
+			let effectiveProvider = provider;
+			if (urlValidation.valid && visibility === "idle") {
+				const parsed = parseRepoUrl(repoUrl);
+				effectiveProvider = parsed?.provider ?? null;
+				const checkResult = await runVisibilityCheck(repoUrl);
+				// Aborted (URL changed or modal closed mid-check) — bail out
+				if (checkResult === null) return;
+				// Invalid URL — bail out (syntax error, not a real URL)
+				if (checkResult === "invalid") return;
+				effectiveVisibilityResult = checkResult;
+			}
+
+			// Re-derive permission from the freshly-obtained visibility result
+			// (avoids relying on stale React state after the async check above)
+			const freshPermission = getClonePermission(effectiveProvider, effectiveVisibilityResult);
+			const { buttonDisabled: freshButtonDisabled } = getCloneUIState(freshPermission);
+
+			const canCloneNow =
+				urlValidation.valid &&
+				selectedDir !== null &&
+				!isCloning &&
+				!freshButtonDisabled;
+
+			if (!canCloneNow || !selectedDir) return;
 
 			const bridge = getBridge();
 			if (!bridge?.cloneRepository) {
@@ -269,7 +368,7 @@ export function CloneFromGitModal({
 				);
 			}
 		},
-		[canClone, selectedDir, repoUrl, repoName, onCloned],
+		[canClone, selectedDir, repoUrl, repoName, repoVisibility, provider, urlValidation.valid, visibility, isCloning, runVisibilityCheck],
 	);
 
 	// ── Render ─────────────────────────────────────────────────────────────
@@ -329,10 +428,10 @@ export function CloneFromGitModal({
 							placeholder="https://github.com/org/repo.git"
 							autoComplete="off"
 							spellCheck={false}
-							disabled={isCloning}
-							aria-describedby={
-								showUrlError ? "clone-git-url-error" : undefined
-							}
+						disabled={isCloning || isCheckingVisibility}
+						aria-describedby={
+							showUrlError ? "clone-git-url-error" : undefined
+						}
 							aria-invalid={showUrlError ? "true" : undefined}
 						/>
 						{showUrlError && (
@@ -345,6 +444,11 @@ export function CloneFromGitModal({
 							</span>
 						)}
 						<RepoVisibilityBadge status={visibility} />
+						{errorMessage && (
+							<p className="text-red-500 text-sm mt-1" role="alert">
+								{errorMessage}
+							</p>
+						)}
 					</div>
 
 					{/* Repo name — read-only, auto-derived */}
@@ -397,7 +501,7 @@ export function CloneFromGitModal({
 								type="button"
 								className="btn btn--secondary form-field__dir-btn"
 								onClick={handleChooseDir}
-								disabled={isCloning}
+						disabled={isCloning || isCheckingVisibility}
 							>
 								Choose Folder
 							</button>
@@ -465,7 +569,7 @@ export function CloneFromGitModal({
 									type="button"
 									className="btn btn--ghost"
 									onClick={onClose}
-									disabled={isCloning}
+						disabled={isCloning || isCheckingVisibility}
 								>
 									Cancel
 								</button>
