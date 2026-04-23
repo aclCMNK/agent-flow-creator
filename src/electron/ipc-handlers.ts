@@ -30,6 +30,7 @@ import {
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import * as https from "node:https";
 
 import { ProjectLoader } from "../loader/project-loader.ts";
 import { atomicWriteJson } from "../loader/lock-manager.ts";
@@ -108,6 +109,8 @@ import type {
 	ExportProfileConflictResponse,
 	CloneRepositoryRequest,
 	CloneRepositoryResult,
+	GitHubFetchRequest,
+	GitHubFetchResult,
 } from "./bridge.types.ts";
 
 import {
@@ -2197,6 +2200,106 @@ export function registerIpcHandlers(): void {
 					error: message,
 				};
 			}
+		},
+	);
+
+	// ══════════════════════════════════════════════════════════════════════
+	// GitHub HTTP fetch handler
+	//
+	// Proxies HTTPS GET requests to api.github.com through the main process
+	// so the renderer is never blocked by CSP connect-src restrictions.
+	//
+	// The renderer cannot call fetch("https://api.github.com/...") directly
+	// because Chromium enforces the CSP policy set via onHeadersReceived in
+	// main.ts (connect-src defaults to 'self' + localhost only).
+	//
+	// Security guards:
+	//   • Only URLs starting with "https://api.github.com/" are accepted.
+	//     Any other origin is rejected with INVALID_URL before any I/O.
+	//   • The Authorization header value is never logged.
+	//   • Always resolves — never rejects.
+	// ══════════════════════════════════════════════════════════════════════
+	ipcMain.handle(
+		IPC_CHANNELS.GITHUB_FETCH,
+		async (
+			_event,
+			req: GitHubFetchRequest,
+		): Promise<GitHubFetchResult> => {
+			const ALLOWED_ORIGIN = "https://api.github.com/";
+
+			// ── URL guard ─────────────────────────────────────────────────────
+			if (
+				typeof req.url !== "string" ||
+				!req.url.startsWith(ALLOWED_ORIGIN)
+			) {
+				console.warn(
+					"[ipc] GITHUB_FETCH: rejected URL (not api.github.com) →",
+					req.url,
+				);
+				return {
+					success: false,
+					errorCode: "INVALID_URL",
+					error: `Only URLs starting with "${ALLOWED_ORIGIN}" are allowed.`,
+				};
+			}
+
+			console.log("[ipc] GITHUB_FETCH: →", req.url);
+
+			return new Promise<GitHubFetchResult>((resolve) => {
+				const requestOptions: https.RequestOptions = {
+					method: "GET",
+					headers: {
+						Accept: "application/vnd.github+json",
+						"User-Agent": "AgentsFlow-Electron",
+						"X-GitHub-Api-Version": "2022-11-28",
+						...(req.token
+							? { Authorization: `Bearer ${req.token}` }
+							: {}),
+					},
+				};
+
+				const request = https.request(req.url, requestOptions, (res) => {
+					let body = "";
+					res.setEncoding("utf-8");
+					res.on("data", (chunk: string) => {
+						body += chunk;
+					});
+					res.on("end", () => {
+						console.log(
+							"[ipc] GITHUB_FETCH: status →",
+							res.statusCode,
+							"url →",
+							req.url,
+						);
+						resolve({
+							success: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
+							status: res.statusCode,
+							body,
+						});
+					});
+				});
+
+				request.on("error", (err: Error) => {
+					console.error("[ipc] GITHUB_FETCH: network error —", err.message);
+					resolve({
+						success: false,
+						errorCode: "NETWORK_ERROR",
+						error: err.message,
+					});
+				});
+
+				request.setTimeout(15_000, () => {
+					request.destroy();
+					console.error("[ipc] GITHUB_FETCH: request timed out →", req.url);
+					resolve({
+						success: false,
+						errorCode: "NETWORK_ERROR",
+						error: "Request timed out after 15 seconds.",
+					});
+				});
+
+				request.end();
+			});
 		},
 	);
 

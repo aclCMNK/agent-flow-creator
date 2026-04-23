@@ -105,6 +105,7 @@ import type {
 	ExportProfileConflictResponse,
 	SyncTasksRequest,
 	CloneRepositoryRequest,
+	GitHubFetchRequest,
 	// ── Folder Explorer ───────────────────────────────────────────────────────
 	FolderExplorerListRequest,
 	FolderExplorerStatRequest,
@@ -417,6 +418,21 @@ const bridge: AgentsFlowBridge = {
 
 	syncTasks(req: SyncTasksRequest) {
 		return ipcRenderer.invoke(IPC_CHANNELS.SYNC_TASKS, req);
+	},
+
+	// ── GitHub HTTP fetch ──────────────────────────────────────────────────────
+	//
+	// Proxies HTTPS GET requests to api.github.com through the main process.
+	// The renderer cannot call fetch("https://api.github.com/...") directly
+	// because the CSP connect-src directive restricts external origins in the
+	// Chromium renderer. This method delegates the network call to Node.js
+	// (main process), which is not subject to CSP.
+	//
+	// Only "https://api.github.com/*" URLs are accepted — all others are
+	// rejected by the main process with errorCode "INVALID_URL".
+
+	githubFetch(req: GitHubFetchRequest) {
+		return ipcRenderer.invoke(IPC_CHANNELS.GITHUB_FETCH, req);
 	},
 
 	// ── Git Clone ──────────────────────────────────────────────────────────────

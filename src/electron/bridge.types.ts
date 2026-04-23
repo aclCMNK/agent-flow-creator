@@ -411,6 +411,16 @@ export const IPC_CHANNELS = {
 	// Returns { updated: number, errors: string[] }.
 	SYNC_TASKS: "adata:sync-tasks",
 
+	// ── GitHub HTTP fetch channel ─────────────────────────────────────────────
+	//
+	// Proxies an HTTPS GET request to api.github.com through the main process.
+	// The renderer is never subject to CSP connect-src restrictions because the
+	// actual network call happens in Node.js (main process), not in Chromium.
+	//
+	// Only "https://api.github.com/*" URLs are accepted — all others are rejected
+	// with errorCode "INVALID_URL" before any network call is made.
+	GITHUB_FETCH: "github:fetch",
+
 	// ── Git Clone channel ──────────────────────────────────────────────────────
 	//
 	// Clones a remote Git repository into `<destDir>/<repoName>` by spawning
@@ -1510,6 +1520,63 @@ export interface SyncTasksResult {
 	errors: string[];
 }
 
+// ── GitHub HTTP fetch IPC types ────────────────────────────────────────────
+//
+// Proxies HTTP GET requests to api.github.com through the main process so
+// that the renderer is never subject to CSP connect-src restrictions when
+// querying the GitHub API.
+//
+// Only GET requests are supported. The renderer passes the full URL and an
+// optional Authorization header (Bearer token); the main process performs
+// the fetch using Node's built-in `https` module and returns the status code
+// plus the raw response body as a string.
+//
+// Security notes:
+//   - Only HTTPS URLs starting with "https://api.github.com/" are accepted.
+//     Any other URL is rejected with errorCode "INVALID_URL" before any
+//     network call is made.
+//   - The Authorization header value is never logged.
+//   - The renderer never gets a raw Node http.ClientRequest — only the
+//     serialized result crosses the bridge.
+
+/**
+ * Request payload for the GITHUB_FETCH channel.
+ */
+export interface GitHubFetchRequest {
+	/**
+	 * Full HTTPS URL to fetch. Must start with "https://api.github.com/".
+	 * Any other origin is rejected with errorCode "INVALID_URL".
+	 */
+	url: string;
+	/**
+	 * Optional Bearer token sent as the Authorization header.
+	 * When omitted, the request is made without authentication (rate-limited).
+	 */
+	token?: string;
+}
+
+/**
+ * Result returned by the GITHUB_FETCH channel.
+ *
+ * Always resolves — never rejects. Errors are surfaced via `errorCode`.
+ */
+export interface GitHubFetchResult {
+	success: boolean;
+	/** HTTP status code returned by the GitHub API (e.g. 200, 404, 403) */
+	status?: number;
+	/** Raw response body as a UTF-8 string (typically JSON) */
+	body?: string;
+	/** Human-readable error message when success === false */
+	error?: string;
+	/**
+	 * Machine-readable error code:
+	 *   "INVALID_URL"    — URL rejected before any network call (not api.github.com)
+	 *   "NETWORK_ERROR"  — connection failed or timed out
+	 *   "UNKNOWN"        — unexpected error
+	 */
+	errorCode?: "INVALID_URL" | "NETWORK_ERROR" | "UNKNOWN";
+}
+
 // ── Git Clone IPC types ────────────────────────────────────────────────────
 //
 // Clones a remote Git repository by spawning `git clone` in the main process.
@@ -1971,6 +2038,35 @@ export interface AgentsFlowBridge {
 	 * one agent fails.
 	 */
 	syncTasks(req: SyncTasksRequest): Promise<SyncTasksResult>;
+
+	// ── GitHub HTTP fetch ─────────────────────────────────────────────────────
+
+	/**
+	 * Proxies an HTTPS GET request to api.github.com through the main process.
+	 *
+	 * The renderer cannot call fetch("https://api.github.com/...") directly
+	 * because the CSP connect-src directive restricts external origins in the
+	 * Chromium renderer. This method delegates the network call to the main
+	 * process (Node.js), which is not subject to CSP.
+	 *
+	 * Only URLs starting with "https://api.github.com/" are accepted.
+	 * All other origins are rejected immediately with errorCode "INVALID_URL".
+	 *
+	 * Always resolves — never rejects. Network and auth errors are surfaced
+	 * via `success: false` and `errorCode`.
+	 *
+	 * @example
+	 * ```ts
+	 * const res = await window.agentsFlow.githubFetch({
+	 *   url: "https://api.github.com/repos/owner/repo",
+	 *   token: myToken,   // optional Bearer token
+	 * });
+	 * if (res.success && res.status === 200) {
+	 *   const data = JSON.parse(res.body!);
+	 * }
+	 * ```
+	 */
+	githubFetch(req: GitHubFetchRequest): Promise<GitHubFetchResult>;
 
 	// ── Git Clone ─────────────────────────────────────────────────────────────
 

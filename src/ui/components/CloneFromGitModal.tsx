@@ -19,8 +19,13 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { validateGitUrl } from "../utils/gitUrlUtils.ts";
+import { validateGitUrl, isValidGitUrl } from "../utils/gitUrlUtils.ts";
 import type { CloneRepositoryResult } from "../../electron/bridge.types.ts";
+import {
+	detectRepoVisibility,
+	type VisibilityStatus,
+} from "../utils/repoVisibility.ts";
+import { RepoVisibilityBadge } from "./RepoVisibilityBadge.tsx";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -103,6 +108,18 @@ export function CloneFromGitModal({
 	const [urlTouched, setUrlTouched] = useState(false);
 	const urlValidation = validateGitUrl(repoUrl);
 
+	// ── Visibility detection state ─────────────────────────────────────────
+	const [visibility, setVisibility] = useState<VisibilityStatus>("idle");
+
+	/** Tracks component mounted state to avoid setState after unmount */
+	const mountedRef = useRef(true);
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+		};
+	}, []);
+
 	// ── Clone operation state ──────────────────────────────────────────────
 	const [phase, setPhase] = useState<ClonePhase>("idle");
 	const [cloneError, setCloneError] = useState<string | null>(null);
@@ -129,6 +146,7 @@ export function CloneFromGitModal({
 			setRepoUrl("");
 			setSelectedDir(null);
 			setUrlTouched(false);
+			setVisibility("idle");
 			setPhase("idle");
 			setCloneError(null);
 			setClonedPath(null);
@@ -170,6 +188,7 @@ export function CloneFromGitModal({
 	const handleUrlChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
 			setRepoUrl(e.target.value);
+			setVisibility("idle"); // reset badge on every keystroke
 			// Reset clone error when user edits the URL
 			if (phase === "error") {
 				setPhase("idle");
@@ -178,6 +197,27 @@ export function CloneFromGitModal({
 		},
 		[phase],
 	);
+
+	// ── URL field blur — trigger visibility detection ──────────────────────
+	const handleUrlBlur = useCallback(async () => {
+		setUrlTouched(true);
+
+		// Skip detection if URL is empty or syntactically invalid
+		if (!repoUrl.trim() || !isValidGitUrl(repoUrl)) {
+			setVisibility("idle");
+			return;
+		}
+
+		setVisibility("checking");
+
+		const result = await detectRepoVisibility(repoUrl);
+
+		// Guard: ignore result if modal was closed during the async call
+		if (!mountedRef.current) return;
+
+		// "not_found" (404) is treated as "private" in the UI
+		setVisibility(result === "not_found" ? "private" : result);
+	}, [repoUrl]);
 
 	// ── Done (post-success) ────────────────────────────────────────────────
 	const handleDone = useCallback(() => {
@@ -285,7 +325,7 @@ export function CloneFromGitModal({
 								.trim()}
 							value={repoUrl}
 							onChange={handleUrlChange}
-							onBlur={() => setUrlTouched(true)}
+							onBlur={handleUrlBlur}
 							placeholder="https://github.com/org/repo.git"
 							autoComplete="off"
 							spellCheck={false}
@@ -304,6 +344,7 @@ export function CloneFromGitModal({
 								{urlValidation.error}
 							</span>
 						)}
+						<RepoVisibilityBadge status={visibility} />
 					</div>
 
 					{/* Repo name — read-only, auto-derived */}
