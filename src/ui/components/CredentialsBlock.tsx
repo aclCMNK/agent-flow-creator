@@ -79,7 +79,7 @@ export function CredentialsBlock({
 		>
 			{/* ── Warning hint ──────────────────────────────────────────── */}
 			<p className="form-field__hint form-field__hint--warn credentials-block__warn">
-				Credenciales necesarias para clonar repos privados.
+				Credentials required to clone private repositories.
 			</p>
 
 			{/* ── Username ──────────────────────────────────────────────── */}
@@ -120,7 +120,7 @@ export function CredentialsBlock({
 						className="credentials-block__hint form-field__hint form-field__hint--error"
 						role="alert"
 					>
-						Requerido
+						Required
 					</div>
 				) : null}
 			</div>
@@ -150,7 +150,7 @@ export function CredentialsBlock({
 					onChange={onTokenChange}
 					disabled={disabled}
 					autoComplete="new-password"
-					placeholder="ghp_xxx... (no guardar)"
+					placeholder="ghp_xxx... (not saved)"
 					aria-label={ariaLabels?.token ?? "GitHub Personal Access Token"}
 					aria-describedby="credentials-token-hint"
 					aria-invalid={tokenError ? "true" : undefined}
@@ -165,8 +165,8 @@ export function CredentialsBlock({
 					role={tokenError ? "alert" : undefined}
 				>
 					{tokenError
-						? "Requerido"
-						: "Usa un token con scope repo (o scope mínimo requerido). No guardamos este token."}
+						? "Required"
+						: "Use a token with repo scope (or the minimum required scope). We do not store this token."}
 				</div>
 			</div>
 
@@ -179,7 +179,7 @@ export function CredentialsBlock({
 					disabled={disabled}
 					aria-label="Clear credentials"
 				>
-					Limpiar credenciales
+					Clear credentials
 				</button>
 			)}
 		</div>
