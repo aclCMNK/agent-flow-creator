@@ -100,3 +100,168 @@ Validar la implementación de la sección **Branches** del modal Git en AgentsFl
 - [ ] Focus visible en `<select>`.
 - [ ] Secciones legibles con separadores visuales.
 - [ ] Estados no bloquean el resto del panel innecesariamente.
+
+---
+
+## 7) BranchCreatorSection (Create Branch)
+
+### 7.1 Presencia e integración en panel
+
+- [ ] `BranchCreatorSection` aparece entre `BranchSelectorSection` y `BranchCommitsSection`.
+- [ ] Existe un `.git-branches__divider` antes de la sección.
+- [ ] Título visible: `Create Branch`.
+
+### 7.2 Validación de nombre de rama (tiempo real)
+
+- [ ] Campo vacío → botón deshabilitado, sin mensaje de error visible.
+- [ ] Nombre con espacio (ej. `"my branch"`) → error inline inmediato.
+- [ ] Nombre con punto (ej. `"my.branch"`) → error inline inmediato.
+- [ ] Nombre con carácter especial (ej. `"my@branch"`) → error inline inmediato.
+- [ ] Nombre que empieza con guión (ej. `"-branch"`) → error inline inmediato.
+- [ ] Nombre que termina con guión (ej. `"branch-"`) → error inline inmediato.
+- [ ] Nombre con doble guión (ej. `"my--branch"`) → error inline inmediato.
+- [ ] Nombre `"main"` → error inline inmediato.
+- [ ] Nombre `"MASTER"` (case-insensitive) → error inline inmediato.
+- [ ] Nombre igual a una rama local existente → error inline inmediato.
+- [ ] Nombre válido (ej. `"feature-123"`) → sin error, botón habilitado.
+- [ ] Nombre de un solo carácter alfanumérico (ej. `"x"`) → válido, botón habilitado.
+
+### 7.3 Selector `From`
+
+- [ ] La rama actual aparece primera con etiqueta `(current)`.
+- [ ] El resto de ramas locales aparecen ordenadas alfabéticamente.
+- [ ] `main` y `master` aparecen como opciones válidas de base.
+- [ ] El selector está deshabilitado mientras `isCreatingBranch === true`.
+- [ ] Al cambiar la rama activa externamente, el selector se actualiza.
+
+### 7.4 Creación exitosa
+
+- [ ] Al crear exitosamente: el input se limpia.
+- [ ] Al crear exitosamente: el error de validación desaparece.
+- [ ] Al crear exitosamente: aparece banner de éxito con nombre de la rama.
+- [ ] El banner de éxito desaparece automáticamente tras ~3 segundos.
+- [ ] La lista de ramas se recarga y muestra la nueva rama.
+- [ ] La nueva rama aparece como rama activa (checked out).
+
+### 7.5 Manejo de errores de operación
+
+- [ ] Error `E_BRANCH_ALREADY_EXISTS` → banner con mensaje legible.
+- [ ] Error `E_BRANCH_NOT_FOUND` (rama base eliminada) → banner con mensaje legible.
+- [ ] Error `E_DIRTY_WORKING_DIR` → banner con mensaje legible.
+- [ ] Error `E_GIT_NOT_FOUND` → banner con mensaje legible.
+- [ ] Error `E_NOT_A_GIT_REPO` → banner con mensaje legible.
+- [ ] Bridge no disponible → banner `Electron bridge unavailable.`.
+- [ ] Al escribir en el input después de un error de operación, el error de operación se limpia.
+
+### 7.6 Estado de carga
+
+- [ ] Durante creación: input deshabilitado.
+- [ ] Durante creación: selector `From` deshabilitado.
+- [ ] Durante creación: botón deshabilitado y texto `Creating…`.
+- [ ] Durante creación: `aria-busy="true"` en el botón.
+- [ ] No se permiten múltiples creaciones simultáneas.
+
+### 7.7 Accesibilidad específica
+
+- [ ] Error de validación inline usa `role="alert"` + `aria-live="assertive"`.
+- [ ] Banner de éxito usa `role="status"`.
+- [ ] Banner de error de operación usa `role="alert"`.
+- [ ] Input usa `aria-invalid="true"` cuando hay error.
+- [ ] Input usa `aria-describedby` apuntando al error cuando existe.
+- [ ] Navegación por Tab en orden: selector `From` → input → botón.
+- [ ] `Enter` en input válido dispara creación.
+- [ ] `Enter` en input inválido no dispara creación.
+
+### 7.8 Verificación de IPC/archivos modificados
+
+- [ ] `src/electron/bridge.types.ts` actualizado con:
+  - [ ] canal `GIT_CREATE_BRANCH`
+  - [ ] tipos `GitCreateBranchRequest`, `GitCreateBranchSuccess`, `GitCreateBranchResponse`
+  - [ ] errores `E_BRANCH_ALREADY_EXISTS` y `E_INVALID_BRANCH_NAME`
+  - [ ] método `gitCreateBranch` en `AgentsFlowBridge`
+- [ ] `src/electron/git-branches.ts`:
+  - [ ] función `createBranch()` implementada
+  - [ ] handler IPC `IPC_CHANNELS.GIT_CREATE_BRANCH` registrado
+- [ ] `src/electron/preload.ts` expone `gitCreateBranch`.
+- [ ] `src/ui/hooks/useGitBranches.ts` cubre estado/acciones/reducer/callback `createBranch`.
+- [ ] `src/ui/components/GitIntegrationModal/GitBranchesPanel.tsx` integra `BranchCreatorSection`.
+- [ ] `src/ui/styles/app.css` contiene clases:
+  - [ ] `.git-branches__creator-row`
+  - [ ] `.git-branches__creator-label`
+  - [ ] `.git-branches__creator-actions`
+  - [ ] `.git-branches__input`
+  - [ ] `.git-branches__input--error`
+  - [ ] `.git-branches__validation-error`
+
+---
+
+## 8) Changes Panel (GitIntegrationModal)
+
+### 8.1 Funcionalidad core
+
+- [ ] Al abrir la sección `Changes`, se carga automáticamente el estado del repositorio.
+- [ ] La rama actual se muestra correctamente en `Current Branch`.
+- [ ] La lista muestra archivos staged, unstaged y untracked.
+- [ ] Botón `Add and Commit` ejecuta `git add -A && git commit`.
+- [ ] Tras commit exitoso: recarga de lista + limpieza de mensaje y descripción.
+- [ ] Tras commit exitoso: se muestra hash corto y desaparece en ~3s.
+- [ ] Botón `↻ Refresh` recarga estado manualmente.
+
+### 8.2 Validaciones
+
+- [ ] `Add and Commit` deshabilitado con mensaje vacío.
+- [ ] `Add and Commit` deshabilitado sin cambios.
+- [ ] `Add and Commit` deshabilitado durante commit en curso.
+- [ ] Mensaje solo espacios muestra: `Commit message cannot be only whitespace.`
+- [ ] Mensaje >72 chars muestra warning visual (sin bloquear).
+- [ ] Campo mensaje limitado a 200 chars.
+- [ ] Campo descripción no tiene validaciones de contenido.
+
+### 8.3 Carga y estados
+
+- [ ] Spinner en `Current Branch` durante carga inicial.
+- [ ] Spinner en `Changes` durante carga/refresco.
+- [ ] Durante commit: botón muestra `Committing…` con `aria-busy`.
+- [ ] Durante commit: campos de formulario deshabilitados.
+- [ ] Durante carga: `Refresh` deshabilitado.
+
+### 8.4 Errores y edge cases
+
+- [ ] Sin proyecto abierto: `No project open.` sin llamadas IPC.
+- [ ] Repo sin commits: rama como `(detached HEAD)` y lista vacía.
+- [ ] Working tree limpio: empty state y botón deshabilitado.
+- [ ] Archivos con espacios se muestran correctamente.
+- [ ] Renames muestran ruta original con `←`.
+- [ ] Ignorados (`!!`) no aparecen.
+- [ ] Estado mixto staged+unstaged muestra badges `S` y `U`.
+- [ ] Lista >20 archivos tiene scroll interno.
+- [ ] Error `E_NOTHING_TO_COMMIT` muestra mensaje entendible.
+- [ ] Error `E_EMPTY_COMMIT_MSG` muestra mensaje entendible.
+
+### 8.5 Accesibilidad
+
+- [ ] Inputs/textarea con `<label htmlFor>` asociado.
+- [ ] Errores de validación con `role="alert"` y `aria-live="assertive"`.
+- [ ] Banner éxito con `role="status"`.
+- [ ] Botón commit con `aria-busy="true"` durante operación.
+- [ ] Lista de archivos con `role="list"` y filas con `role="listitem"`.
+- [ ] Íconos decorativos con `aria-hidden="true"`.
+- [ ] Badge contador con `aria-label="{n} files changed"`.
+- [ ] Elementos deshabilitados usan atributo `disabled`.
+
+### 8.6 Integración IPC y archivos
+
+- [ ] `src/electron/bridge.types.ts` incluye:
+  - [ ] canales `GIT_GET_STATUS` y `GIT_ADD_AND_COMMIT`
+  - [ ] tipos `GitChangedFile`, `GitGetStatus*`, `GitAddAndCommit*`
+  - [ ] errores `E_NOTHING_TO_COMMIT` y `E_EMPTY_COMMIT_MSG`
+  - [ ] métodos `gitGetStatus` y `gitAddAndCommit` en `AgentsFlowBridge`
+- [ ] `src/electron/git-changes.ts` implementa:
+  - [ ] `getStatus()`
+  - [ ] `addAndCommit()`
+  - [ ] `registerGitChangesHandlers()`
+- [ ] `src/electron/ipc-handlers.ts` registra `registerGitChangesHandlers`.
+- [ ] `src/electron/preload.ts` expone `gitGetStatus` y `gitAddAndCommit`.
+- [ ] `src/ui/hooks/useGitChanges.ts` implementa reducer + callbacks + flujo de recarga.
+- [ ] `src/ui/components/GitIntegrationModal/GitChangesPanel.tsx` implementa 4 subsecciones.
+- [ ] `src/ui/styles/app.css` contiene clases `git-changes__*` requeridas.

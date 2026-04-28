@@ -6,6 +6,8 @@ import {
 	type GitBranch,
 	type GitCheckoutBranchResponse,
 	type GitCommit,
+	type GitCreateBranchRequest,
+	type GitCreateBranchResponse,
 	type GitFetchAndPullResponse,
 	type GitGetBranchCommitsResponse,
 	type GitGetRemoteDiffResponse,
@@ -512,6 +514,58 @@ async function getBranchCommits(
 	};
 }
 
+async function createBranch(
+	projectDir: string,
+	newBranchName: string,
+	sourceBranch: string,
+): Promise<GitCreateBranchResponse> {
+	const repoError = ensureGitRepo(projectDir);
+	if (repoError) return repoError;
+
+	const trimmed = newBranchName.trim();
+	if (!trimmed || !/^[a-zA-Z0-9][a-zA-Z0-9\-]*$/.test(trimmed)) {
+		return gitError("E_INVALID_BRANCH_NAME", `Invalid branch name: '${trimmed}'.`);
+	}
+
+	const protectedNames = ["main", "master"];
+	if (protectedNames.includes(trimmed.toLowerCase())) {
+		return gitError(
+			"E_INVALID_BRANCH_NAME",
+			`Cannot create a branch named '${trimmed}'.`,
+		);
+	}
+
+	const sourceName = sourceBranch.trim();
+	const sourceRes = await runGit(projectDir, ["rev-parse", "--verify", sourceName]);
+	if (sourceRes.exitCode !== 0) {
+		return gitError(
+			"E_BRANCH_NOT_FOUND",
+			`Source branch '${sourceName}' does not exist.`,
+			sourceRes.stderr || sourceRes.stdout || undefined,
+		);
+	}
+
+	const existsRes = await runGit(projectDir, ["rev-parse", "--verify", trimmed]);
+	if (existsRes.exitCode === 0) {
+		return gitError(
+			"E_BRANCH_ALREADY_EXISTS",
+			`Branch '${trimmed}' already exists.`,
+		);
+	}
+
+	const createRes = await runGit(projectDir, [
+		"checkout",
+		"-b",
+		trimmed,
+		sourceName,
+	]);
+	if (createRes.exitCode !== 0) {
+		return toGitError(createRes, `Failed to create branch '${trimmed}'.`);
+	}
+
+	return { ok: true, branch: trimmed, checkedOut: true };
+}
+
 export function registerGitBranchesHandlers(ipcMain: IpcMain): void {
 	ipcMain.handle(
 		IPC_CHANNELS.GIT_LIST_BRANCHES,
@@ -555,6 +609,13 @@ export function registerGitBranchesHandlers(ipcMain: IpcMain): void {
 			req: { projectDir: string; branch: string; limit?: number },
 		) => {
 			return getBranchCommits(req.projectDir, req.branch, req.limit ?? 20);
+		},
+	);
+
+	ipcMain.handle(
+		IPC_CHANNELS.GIT_CREATE_BRANCH,
+		async (_event, req: GitCreateBranchRequest) => {
+			return createBranch(req.projectDir, req.newBranchName, req.sourceBranch);
 		},
 	);
 }

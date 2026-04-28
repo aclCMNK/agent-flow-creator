@@ -494,6 +494,18 @@ export const IPC_CHANNELS = {
 
 	// Obtiene el historial de commits de una rama específica.
 	GIT_GET_BRANCH_COMMITS: "git:get-branch-commits",
+
+	// Crea una nueva rama local desde una rama base y hace checkout automático.
+	GIT_CREATE_BRANCH: "git:create-branch",
+
+	// ── Git Changes channels ───────────────────────────────────────────────────
+
+	// Obtiene el estado de archivos del working tree (staged, unstaged, untracked).
+	// Equivale a: git status --porcelain=v1 -u
+	GIT_GET_STATUS: "git:get-status",
+
+	// Ejecuta git add -A && git commit -m <message> [-m <description>]
+	GIT_ADD_AND_COMMIT: "git:add-and-commit",
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -1892,6 +1904,10 @@ export type GitOperationErrorCode =
 	| "E_MERGE_CONFLICT"
 	| "E_DIRTY_WORKING_DIR"
 	| "E_BRANCH_NOT_FOUND"
+	| "E_BRANCH_ALREADY_EXISTS"
+	| "E_INVALID_BRANCH_NAME"
+	| "E_NOTHING_TO_COMMIT"
+	| "E_EMPTY_COMMIT_MSG"
 	| "E_TIMEOUT"
 	| "E_UNKNOWN";
 
@@ -2013,6 +2029,78 @@ export interface GitGetBranchCommitsResult {
 export type GitGetBranchCommitsResponse =
 	| GitGetBranchCommitsResult
 	| GitOperationError;
+
+// ── GIT_CREATE_BRANCH ───────────────────────────────────────────────────────
+
+export interface GitCreateBranchRequest {
+	projectDir: string;
+	/** Nombre de la nueva rama a crear */
+	newBranchName: string;
+	/** Rama base desde la cual crear la nueva rama */
+	sourceBranch: string;
+}
+
+export interface GitCreateBranchSuccess {
+	ok: true;
+	/** Nombre de la rama creada */
+	branch: string;
+	/** Siempre true: se hace checkout automático a la rama creada */
+	checkedOut: boolean;
+}
+
+export type GitCreateBranchResponse =
+	| GitCreateBranchSuccess
+	| GitOperationError;
+
+// ── GIT_GET_STATUS / GIT_ADD_AND_COMMIT ───────────────────────────────────
+
+export type GitFileStatusCode =
+	| "M"
+	| "A"
+	| "D"
+	| "R"
+	| "C"
+	| "U"
+	| "?"
+	| " ";
+
+export interface GitChangedFile {
+	path: string;
+	stagedStatus: GitFileStatusCode;
+	unstagedStatus: GitFileStatusCode;
+	isStaged: boolean;
+	isUnstaged: boolean;
+	isUntracked: boolean;
+	originalPath?: string;
+}
+
+export interface GitGetStatusRequest {
+	projectDir: string;
+}
+
+export interface GitGetStatusResult {
+	ok: true;
+	currentBranch: string;
+	files: GitChangedFile[];
+	stagedCount: number;
+	unstagedCount: number;
+}
+
+export type GitGetStatusResponse = GitGetStatusResult | GitOperationError;
+
+export interface GitAddAndCommitRequest {
+	projectDir: string;
+	message: string;
+	description?: string;
+}
+
+export interface GitAddAndCommitResult {
+	ok: true;
+	commitHash: string;
+	output: string;
+}
+
+export type GitAddAndCommitResponse = GitAddAndCommitResult | GitOperationError;
 
 export interface AgentsFlowBridge {
 	/**
@@ -2543,6 +2631,11 @@ export interface AgentsFlowBridge {
 	gitGetBranchCommits(
 		req: GitGetBranchCommitsRequest,
 	): Promise<GitGetBranchCommitsResponse>;
+	gitCreateBranch(req: GitCreateBranchRequest): Promise<GitCreateBranchResponse>;
+	gitGetStatus(req: GitGetStatusRequest): Promise<GitGetStatusResponse>;
+	gitAddAndCommit(
+		req: GitAddAndCommitRequest,
+	): Promise<GitAddAndCommitResponse>;
 }
 
 // ── Global type augmentation ──────────────────────────────────────────────

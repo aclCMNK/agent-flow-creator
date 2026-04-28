@@ -147,6 +147,7 @@ import { handleListSkills } from "./skills-handlers.ts";
 import { handleRenameAgentFolder } from "./rename-agent-folder.ts";
 import { exportActiveSkills } from "./skill-export-handlers.ts";
 import { registerGitBranchesHandlers } from "./git-branches.ts";
+import { registerGitChangesHandlers } from "./git-changes.ts";
 
 // ── Folder Explorer ────────────────────────────────────────────────────────
 // The folder-explorer handlers live in the electron-main module tree because
@@ -2569,6 +2570,7 @@ export function registerIpcHandlers(): void {
 	// ══════════════════════════════════════════════════════════════════════
 	registerFolderExplorerHandlers(ipcMain);
 	registerGitBranchesHandlers(ipcMain);
+	registerGitChangesHandlers(ipcMain);
 
 	// ══════════════════════════════════════════════════════════════════════
 	// Git Clone handler — full implementation

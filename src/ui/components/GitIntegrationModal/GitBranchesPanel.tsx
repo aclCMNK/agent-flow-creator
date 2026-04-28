@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
 import type { GitBranch, GitCommit } from "../../../electron/bridge.types.ts";
 import { useGitBranches } from "../../hooks/useGitBranches.ts";
 import { useProjectStore } from "../../store/projectStore.ts";
@@ -36,6 +37,36 @@ interface BranchCommitsSectionProps {
 	commits: GitCommit[];
 	isLoading: boolean;
 	error: string | null;
+}
+
+interface BranchCreatorSectionProps {
+	currentBranch: string;
+	allLocalBranches: GitBranch[];
+	isCreatingBranch: boolean;
+	createBranchError: string | null;
+	lastCreateBranchSuccess: string | null;
+	onCreateBranch: (newName: string, sourceBranch: string) => void;
+	onClearCreateBranchError: () => void;
+}
+
+function validateBranchName(name: string, existingNames: string[]): string | null {
+	if (name.length === 0) return null;
+	if (/\s/.test(name)) return "Branch name cannot contain spaces.";
+	if (!/^[a-zA-Z0-9\-]+$/.test(name)) {
+		return "Only letters, numbers and hyphens are allowed.";
+	}
+	if (name.startsWith("-")) return "Branch name cannot start with a hyphen.";
+	if (name.endsWith("-")) return "Branch name cannot end with a hyphen.";
+	if (/--/.test(name)) {
+		return "Branch name cannot contain consecutive hyphens.";
+	}
+	if (["main", "master"].includes(name.toLowerCase())) {
+		return "Cannot use 'main' or 'master' as branch name.";
+	}
+	if (existingNames.includes(name)) {
+		return "A branch with this name already exists.";
+	}
+	return null;
 }
 
 function RemoteChangesSection(props: RemoteChangesSectionProps) {
@@ -301,6 +332,152 @@ function BranchCommitsSection(props: BranchCommitsSectionProps) {
 	);
 }
 
+function BranchCreatorSection(props: BranchCreatorSectionProps) {
+	const [newBranchName, setNewBranchName] = useState<string>("");
+	const [sourceBranch, setSourceBranch] = useState<string>(props.currentBranch);
+	const [validationError, setValidationError] = useState<string | null>(null);
+	const orderedLocalBranches = useMemo(() => {
+		const current = props.allLocalBranches.find(
+			(branch) => branch.name === props.currentBranch,
+		);
+		const rest = props.allLocalBranches
+			.filter((branch) => branch.name !== props.currentBranch)
+			.sort((a, b) => a.name.localeCompare(b.name));
+		return current ? [current, ...rest] : rest;
+	}, [props.allLocalBranches, props.currentBranch]);
+
+	const isFormValid = newBranchName.length > 0 && validationError === null;
+
+	useEffect(() => {
+		setSourceBranch(props.currentBranch);
+	}, [props.currentBranch]);
+
+	useEffect(() => {
+		if (props.lastCreateBranchSuccess) {
+			setNewBranchName("");
+			setValidationError(null);
+		}
+	}, [props.lastCreateBranchSuccess]);
+
+	const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
+		const value = e.target.value;
+		setNewBranchName(value);
+		setValidationError(
+			validateBranchName(
+				value,
+				props.allLocalBranches.map((branch) => branch.name),
+			),
+		);
+		if (props.createBranchError) {
+			props.onClearCreateBranchError();
+		}
+	};
+
+	const handleCreate = () => {
+		if (!isFormValid || props.isCreatingBranch) return;
+		props.onCreateBranch(newBranchName, sourceBranch);
+	};
+
+	return (
+		<section
+			className="git-branches__section"
+			aria-labelledby="git-branches-creator-title"
+		>
+			<header className="git-branches__section-header">
+				<h3 id="git-branches-creator-title" className="git-branches__section-title">
+					Create Branch
+				</h3>
+			</header>
+
+			<div className="git-branches__creator-row">
+				<label
+					htmlFor="git-branches-source-select"
+					className="git-branches__creator-label"
+				>
+					From:
+				</label>
+				<select
+					id="git-branches-source-select"
+					className="git-branches__select"
+					value={sourceBranch}
+					onChange={(e) => setSourceBranch(e.target.value)}
+					disabled={props.isCreatingBranch}
+					aria-label="Source branch"
+				>
+					{orderedLocalBranches.map((branch) => (
+						<option key={branch.name} value={branch.name}>
+							{branch.name}
+							{branch.name === props.currentBranch ? " (current)" : ""}
+						</option>
+					))}
+				</select>
+			</div>
+
+			<div className="git-branches__creator-row">
+				<label
+					htmlFor="git-branches-new-name"
+					className="git-branches__creator-label"
+				>
+					New branch:
+				</label>
+				<input
+					id="git-branches-new-name"
+					type="text"
+					className={`git-branches__input${validationError ? " git-branches__input--error" : ""}`}
+					value={newBranchName}
+					onChange={handleNameChange}
+					placeholder="feature/my-branch"
+					disabled={props.isCreatingBranch}
+					aria-describedby={validationError ? "git-branches-name-error" : undefined}
+					aria-invalid={validationError ? "true" : "false"}
+					autoComplete="off"
+					spellCheck={false}
+					onKeyDown={(e) => {
+						if (e.key === "Enter" && isFormValid) {
+							handleCreate();
+						}
+					}}
+				/>
+			</div>
+
+			{validationError && (
+				<p
+					id="git-branches-name-error"
+					className="git-branches__validation-error"
+					role="alert"
+					aria-live="assertive"
+				>
+					{validationError}
+				</p>
+			)}
+
+			<div className="git-branches__creator-actions">
+				<button
+					type="button"
+					className="btn btn--primary"
+					disabled={!isFormValid || props.isCreatingBranch}
+					onClick={handleCreate}
+					aria-busy={props.isCreatingBranch}
+				>
+					{props.isCreatingBranch ? "Creating…" : "⎇ Create & Checkout"}
+				</button>
+			</div>
+
+			{props.createBranchError && (
+				<div className="git-branches__error-banner" role="alert">
+					{props.createBranchError}
+				</div>
+			)}
+
+			{props.lastCreateBranchSuccess && (
+				<div className="git-branches__success-banner" role="status">
+					✓ Branch '{props.lastCreateBranchSuccess}' created and checked out.
+				</div>
+			)}
+		</section>
+	);
+}
+
 export function GitBranchesPanel() {
 	const projectDir = useProjectStore((s) => s.project?.projectDir ?? null);
 	const {
@@ -309,17 +486,29 @@ export function GitBranchesPanel() {
 		fetchAndPull,
 		pullBranch,
 		checkoutBranch,
+		createBranch,
 		selectBranch,
 		clearErrors,
+		clearCreateBranchFeedback,
 	} = useGitBranches(projectDir);
 
 	useEffect(() => {
-		if (!state.lastFetchPullSuccess && !state.lastCheckoutSuccess) return;
+		if (
+			!state.lastFetchPullSuccess &&
+			!state.lastCheckoutSuccess &&
+			!state.lastCreateBranchSuccess
+		)
+			return;
 		const timeoutId = window.setTimeout(() => {
 			clearErrors();
 		}, 3000);
 		return () => window.clearTimeout(timeoutId);
-	}, [state.lastFetchPullSuccess, state.lastCheckoutSuccess, clearErrors]);
+	}, [
+		state.lastFetchPullSuccess,
+		state.lastCheckoutSuccess,
+		state.lastCreateBranchSuccess,
+		clearErrors,
+	]);
 
 	if (!projectDir) {
 		return <div className="git-branches__no-project">No project open.</div>;
@@ -367,9 +556,19 @@ export function GitBranchesPanel() {
 				}}
 			/>
 
-			<div className="git-branches__note" aria-live="polite">
-				main/master excluded from selector.
-			</div>
+			<div className="git-branches__divider" />
+
+			<BranchCreatorSection
+				currentBranch={state.currentBranch}
+				allLocalBranches={state.branches.filter((branch) => !branch.isRemote)}
+				isCreatingBranch={state.isCreatingBranch}
+				createBranchError={state.createBranchError}
+				lastCreateBranchSuccess={state.lastCreateBranchSuccess}
+				onCreateBranch={(name, source) => {
+					void createBranch(name, source);
+				}}
+				onClearCreateBranchError={clearCreateBranchFeedback}
+			/>
 
 			<div className="git-branches__divider" />
 

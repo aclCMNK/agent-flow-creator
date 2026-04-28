@@ -122,6 +122,12 @@ import type {
 	GitCheckoutBranchResponse,
 	GitGetBranchCommitsRequest,
 	GitGetBranchCommitsResponse,
+	GitCreateBranchRequest,
+	GitCreateBranchResponse,
+	GitGetStatusRequest,
+	GitGetStatusResponse,
+	GitAddAndCommitRequest,
+	GitAddAndCommitResponse,
 	// ── Folder Explorer ───────────────────────────────────────────────────────
 	FolderExplorerListRequest,
 	FolderExplorerStatRequest,
@@ -521,6 +527,22 @@ const bridge: AgentsFlowBridge = {
 		req: GitGetBranchCommitsRequest,
 	): Promise<GitGetBranchCommitsResponse> {
 		return ipcRenderer.invoke(IPC_CHANNELS.GIT_GET_BRANCH_COMMITS, req);
+	},
+
+	gitCreateBranch(
+		req: GitCreateBranchRequest,
+	): Promise<GitCreateBranchResponse> {
+		return ipcRenderer.invoke(IPC_CHANNELS.GIT_CREATE_BRANCH, req);
+	},
+
+	gitGetStatus(req: GitGetStatusRequest): Promise<GitGetStatusResponse> {
+		return ipcRenderer.invoke(IPC_CHANNELS.GIT_GET_STATUS, req);
+	},
+
+	gitAddAndCommit(
+		req: GitAddAndCommitRequest,
+	): Promise<GitAddAndCommitResponse> {
+		return ipcRenderer.invoke(IPC_CHANNELS.GIT_ADD_AND_COMMIT, req);
 	},
 };
 

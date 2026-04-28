@@ -22,6 +22,7 @@ interface GitBranchesState {
 	isPullingBranch: boolean;
 	isCheckingOut: boolean;
 	isLoadingCommits: boolean;
+	isCreatingBranch: boolean;
 
 	branchesError: string | null;
 	remoteDiffError: string | null;
@@ -29,9 +30,11 @@ interface GitBranchesState {
 	pullBranchError: string | null;
 	checkoutError: string | null;
 	commitsError: string | null;
+	createBranchError: string | null;
 
 	lastFetchPullSuccess: string | null;
 	lastCheckoutSuccess: string | null;
+	lastCreateBranchSuccess: string | null;
 }
 
 type GitBranchesAction =
@@ -64,6 +67,10 @@ type GitBranchesAction =
 	| { type: "LOAD_COMMITS_START" }
 	| { type: "LOAD_COMMITS_SUCCESS"; commits: GitCommit[]; branch: string }
 	| { type: "LOAD_COMMITS_ERROR"; error: string }
+	| { type: "CREATE_BRANCH_START" }
+	| { type: "CREATE_BRANCH_SUCCESS"; branch: string }
+	| { type: "CREATE_BRANCH_ERROR"; error: string }
+	| { type: "CLEAR_CREATE_BRANCH_FEEDBACK" }
 	| { type: "CLEAR_ERRORS" };
 
 const PROTECTED_BRANCHES = ["main", "master"];
@@ -85,6 +92,7 @@ const initialState: GitBranchesState = {
 	isPullingBranch: false,
 	isCheckingOut: false,
 	isLoadingCommits: false,
+	isCreatingBranch: false,
 
 	branchesError: null,
 	remoteDiffError: null,
@@ -92,9 +100,11 @@ const initialState: GitBranchesState = {
 	pullBranchError: null,
 	checkoutError: null,
 	commitsError: null,
+	createBranchError: null,
 
 	lastFetchPullSuccess: null,
 	lastCheckoutSuccess: null,
+	lastCreateBranchSuccess: null,
 };
 
 function reducer(
@@ -242,6 +252,31 @@ function reducer(
 				isLoadingCommits: false,
 				commitsError: action.error,
 			};
+		case "CREATE_BRANCH_START":
+			return {
+				...state,
+				isCreatingBranch: true,
+				createBranchError: null,
+				lastCreateBranchSuccess: null,
+			};
+		case "CREATE_BRANCH_SUCCESS":
+			return {
+				...state,
+				isCreatingBranch: false,
+				createBranchError: null,
+				lastCreateBranchSuccess: action.branch,
+			};
+		case "CREATE_BRANCH_ERROR":
+			return {
+				...state,
+				isCreatingBranch: false,
+				createBranchError: action.error,
+			};
+		case "CLEAR_CREATE_BRANCH_FEEDBACK":
+			return {
+				...state,
+				createBranchError: null,
+			};
 		case "CLEAR_ERRORS":
 			return {
 				...state,
@@ -251,8 +286,10 @@ function reducer(
 				pullBranchError: null,
 				checkoutError: null,
 				commitsError: null,
+				createBranchError: null,
 				lastFetchPullSuccess: null,
 				lastCheckoutSuccess: null,
+				lastCreateBranchSuccess: null,
 			};
 		default:
 			return state;
@@ -272,7 +309,11 @@ function mapGitErrorToMessage(error: GitOperationError): string {
 		case "E_DIRTY_WORKING_DIR":
 			return "You have local uncommitted changes blocking this operation.";
 		case "E_BRANCH_NOT_FOUND":
-			return "Selected branch does not exist.";
+			return error.message || "Selected branch does not exist.";
+		case "E_BRANCH_ALREADY_EXISTS":
+			return "A branch with that name already exists.";
+		case "E_INVALID_BRANCH_NAME":
+			return error.message || "Invalid branch name.";
 		case "E_TIMEOUT":
 			return "Git operation timed out. Try again.";
 		default:
@@ -466,12 +507,49 @@ export function useGitBranches(projectDir: string | null) {
 		[projectDir],
 	);
 
+	const createBranch = useCallback(
+		async (newBranchName: string, sourceBranch: string) => {
+			if (!projectDir || !newBranchName || !sourceBranch) return;
+			const bridge = getBridge();
+			if (!bridge) {
+				dispatch({
+					type: "CREATE_BRANCH_ERROR",
+					error: "Electron bridge unavailable.",
+				});
+				return;
+			}
+
+			dispatch({ type: "CREATE_BRANCH_START" });
+			const res = await bridge.gitCreateBranch({
+				projectDir,
+				newBranchName,
+				sourceBranch,
+			});
+			if (!res.ok) {
+				dispatch({
+					type: "CREATE_BRANCH_ERROR",
+					error: mapGitErrorToMessage(res),
+				});
+				return;
+			}
+
+			dispatch({ type: "CREATE_BRANCH_SUCCESS", branch: res.branch });
+			await loadBranches();
+			await loadRemoteDiff();
+		},
+		[projectDir, loadBranches, loadRemoteDiff],
+	);
+
 	const selectBranch = useCallback((branch: string) => {
 		dispatch({ type: "SELECT_BRANCH", branch });
 	}, []);
 
 	const clearErrors = useCallback(() => {
 		dispatch({ type: "CLEAR_ERRORS" });
+	}, []);
+
+	const clearCreateBranchFeedback = useCallback(() => {
+		dispatch({ type: "CLEAR_CREATE_BRANCH_FEEDBACK" });
 	}, []);
 
 	useEffect(() => {
@@ -496,7 +574,9 @@ export function useGitBranches(projectDir: string | null) {
 		fetchAndPull,
 		pullBranch,
 		checkoutBranch,
+		createBranch,
 		selectBranch,
 		clearErrors,
+		clearCreateBranchFeedback,
 	};
 }
