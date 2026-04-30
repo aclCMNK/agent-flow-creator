@@ -31,6 +31,7 @@ import { useAgentFlowStore } from "../store/agentFlowStore.ts";
 import { useProjectStore } from "../store/projectStore.ts";
 import type { LinkRuleType, DelegationType } from "../store/agentFlowStore.ts";
 import type { PermissionsModalTarget } from "../store/agentFlowStore.ts";
+import { SelectModelModal } from "./SelectModelModal.tsx";
 
 // ── Placeholder message map ────────────────────────────────────────────────
 
@@ -910,6 +911,7 @@ function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
   const [provider, setProvider] = useState<string>(OPENCODE_PROVIDERS[0] ?? "");
   const [model, setModel] = useState<string>("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [selectModelOpen, setSelectModelOpen] = useState(false);
 
   // Debounce timer for model field auto-save
   const modelSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1004,6 +1006,22 @@ function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
     <div className="opencode-config-form">
       {/* ── Section heading ─────────────────────────────────────────── */}
       <div className="agent-adapter-form__section-heading">OpenCode Settings</div>
+
+      {/* ── Select Model button ──────────────────────────────────────── */}
+      <button
+        type="button"
+        className="btn btn--secondary select-model-btn"
+        onClick={() => setSelectModelOpen(true)}
+        aria-label="Open model selector"
+      >
+        Select Model
+      </button>
+
+      {/* ── Select Model modal ───────────────────────────────────────── */}
+      <SelectModelModal
+        open={selectModelOpen}
+        onClose={() => setSelectModelOpen(false)}
+      />
 
       {/* ── Provider dropdown ───────────────────────────────────────── */}
       <div className="agent-adapter-form__field">
