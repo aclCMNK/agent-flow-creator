@@ -1021,6 +1021,21 @@ function OpenCodeConfigForm({ agentId }: OpenCodeConfigFormProps) {
       <SelectModelModal
         open={selectModelOpen}
         onClose={() => setSelectModelOpen(false)}
+        onSelectModel={(modelId) => {
+          // modelId is "provider/model" — split and persist both fields
+          const slashIdx = modelId.indexOf("/");
+          if (slashIdx !== -1) {
+            const selectedProvider = modelId.slice(0, slashIdx);
+            const selectedModel = modelId.slice(slashIdx + 1);
+            setProvider(selectedProvider);
+            setModel(selectedModel);
+            persist(selectedProvider, selectedModel);
+          } else {
+            // Fallback: treat entire string as model name
+            setModel(modelId);
+            persist(provider, modelId);
+          }
+        }}
       />
 
       {/* ── Provider dropdown ───────────────────────────────────────── */}

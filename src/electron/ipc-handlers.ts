@@ -163,6 +163,8 @@ import {
 	FOLDER_EXPLORER_CHANNELS,
 	registerModelsApiHandlers,
 	MODELS_API_CHANNELS,
+	registerOpencodeModelsHandlers,
+	OPENCODE_MODELS_CHANNELS,
 } from "../../electron-main/src/ipc/index.ts";
 
 // ── Git Clone — active process registry ───────────────────────────────────
@@ -747,6 +749,11 @@ export function registerIpcHandlers(): void {
 
 	// ── Also remove models-api channels ──────────────────────────────────────
 	for (const channel of Object.values(MODELS_API_CHANNELS)) {
+		ipcMain.removeHandler(channel);
+	}
+
+	// ── Also remove opencode-models channels ─────────────────────────────────
+	for (const channel of Object.values(OPENCODE_MODELS_CHANNELS)) {
 		ipcMain.removeHandler(channel);
 	}
 
@@ -2578,6 +2585,7 @@ export function registerIpcHandlers(): void {
 	// ══════════════════════════════════════════════════════════════════════
 	registerFolderExplorerHandlers(ipcMain);
 	registerModelsApiHandlers(ipcMain);
+	registerOpencodeModelsHandlers(ipcMain);
 	registerGitConfigHandlers(ipcMain);
 	registerGitBranchesHandlers(ipcMain);
 	registerGitChangesHandlers(ipcMain);

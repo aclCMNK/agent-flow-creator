@@ -52,6 +52,18 @@ export {
 } from "./models-api.ts";
 export type { ModelsApiStatus, ModelsApiResult } from "./models-api.ts";
 
+// ── OpenCode Models ──────────────────────────────────────────────────────────
+export {
+  registerOpencodeModelsHandlers,
+  OPENCODE_MODELS_CHANNELS,
+  parseOpencodeModelsOutput,
+  runOpencodeModels,
+} from "./opencode-models.ts";
+export type {
+  OpencodeModelsResult,
+  OpencodeModelsDeps,
+} from "./opencode-models.ts";
+
 // ── Re-export types so consumers import from a single place ─────────────────
 // (Adding `export type` keeps them tree-shakeable and avoids value-import overhead.)
 export type {

@@ -6,27 +6,33 @@
  * visual design system (modal-backdrop, modal classes from app.css).
  *
  * Usage:
- *   <SelectModelModal open={open} onClose={() => setOpen(false)}>
- *     {/* future model-search component goes here *\/}
- *   </SelectModelModal>
+ *   <SelectModelModal
+ *     open={open}
+ *     onClose={() => setOpen(false)}
+ *     onSelectModel={(modelId) => handleModelSelected(modelId)}
+ *   />
  *
  * Closing behaviour:
  *   - Click the ✕ button in the header.
  *   - Click outside the modal (on the backdrop).
- *   - (Future) Escape key can be wired via onKeyDown on the backdrop.
+ *   - Escape key.
+ *   - Selecting a model (calls onSelectModel then onClose).
  */
 
 import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { ModelSearchPanel } from "./ModelSearchPanel.tsx";
 
 interface SelectModelModalProps {
   open: boolean;
   onClose: () => void;
-  /** Optional children — slot for the future model-search component */
+  /** Called when the user selects a model. Receives "provider/model". */
+  onSelectModel?: (modelId: string) => void;
+  /** Optional children — override slot for tests/extensibility */
   children?: React.ReactNode;
 }
 
-export function SelectModelModal({ open, onClose, children }: SelectModelModalProps) {
+export function SelectModelModal({ open, onClose, onSelectModel, children }: SelectModelModalProps) {
   const backdropRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape key
@@ -43,6 +49,11 @@ export function SelectModelModal({ open, onClose, children }: SelectModelModalPr
 
   function handleBackdropClick(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === backdropRef.current) onClose();
+  }
+
+  function handleSelectModel(modelId: string) {
+    onSelectModel?.(modelId);
+    onClose();
   }
 
   return createPortal(
@@ -68,12 +79,10 @@ export function SelectModelModal({ open, onClose, children }: SelectModelModalPr
           </button>
         </header>
 
-        {/* ── Body — slot for future model-search component ─────────── */}
+        {/* ── Body — ModelSearchPanel or override ───────────────────── */}
         <div className="modal__body select-model-modal__body">
           {children ?? (
-            <p className="select-model-modal__placeholder">
-              Model search coming soon...
-            </p>
+            <ModelSearchPanel onSelectModel={handleSelectModel} />
           )}
         </div>
       </div>

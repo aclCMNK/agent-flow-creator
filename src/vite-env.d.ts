@@ -11,5 +11,12 @@ declare global {
     modelsApi?: {
       getModels(): Promise<ModelsApiResult>;
     };
+    /**
+     * OpenCode Models bridge — exposes listModels() for the renderer.
+     * Populated by the preload script via contextBridge.
+     */
+    opencodeModels?: {
+      listModels(): Promise<import("./electron/bridge.types.ts").OpencodeModelsResult>;
+    };
   }
 }
