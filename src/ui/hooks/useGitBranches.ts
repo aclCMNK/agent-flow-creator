@@ -9,6 +9,7 @@ import {
 	type UiGitError,
 	toUiGitError,
 } from "../utils/gitErrorUtils.ts";
+import { useProjectStore } from "../store/projectStore.ts";
 
 interface GitBranchesState {
 	currentBranch: string;
@@ -495,6 +496,15 @@ export function useGitBranches(
 			}
 
 			dispatch({ type: "CHECKOUT_SUCCESS", branch: res.branch });
+			// Sync active branch to global store so the header updates (CA-4).
+			// Guard against project change (EC-4).
+			const currentProject = useProjectStore.getState().project;
+			if (currentProject?.projectDir === projectDir) {
+				useProjectStore.getState().syncGitHeaderState(
+					useProjectStore.getState().gitRemoteOrigin,
+					res.branch,
+				);
+			}
 			await loadBranches();
 			await loadRemoteDiff();
 		},

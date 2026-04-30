@@ -153,6 +153,14 @@ export interface ProjectState {
 	 */
 	gitRemoteOrigin: string | null;
 
+	/**
+	 * Active branch name for the current project's Git repository.
+	 * `null` when the project has no `.git`, no commits yet, or git is
+	 * unavailable. Populated asynchronously after `openProject` succeeds
+	 * or after a successful Git integration from the editor.
+	 */
+	gitActiveBranch: string | null;
+
 	// ── Recent projects ──────────────────────────────────────────────────────
 	recentProjects: RecentProject[];
 
@@ -216,6 +224,13 @@ export interface ProjectActions {
 
 	// ── Clear the last error ─────────────────────────────────────────────────
 	clearError(): void;
+
+	// ── Sync Git header state from external hooks (e.g. useGitConfig) ────────
+	/**
+	 * Synchronizes the Git header state (remote URL and active branch) from
+	 * external hooks. Call after operations that change the remote or active branch.
+	 */
+	syncGitHeaderState(remote: string | null, branch: string | null): void;
 }
 
 // ── Store type ─────────────────────────────────────────────────────────────
@@ -230,6 +245,7 @@ const initialState: ProjectState = {
 	lastLoadResult: null,
 	lastValidationResult: null,
 	gitRemoteOrigin: null,
+	gitActiveBranch: null,
 	recentProjects: [],
 	isLoading: false,
 	isValidating: false,
@@ -367,7 +383,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 	async openProject(projectDir) {
 		// Clear git badge immediately so the UI never shows a stale remote
 		// from a previously opened project while this load is in flight.
-		set({ isLoading: true, lastError: null, gitRemoteOrigin: null });
+		set({ isLoading: true, lastError: null, gitRemoteOrigin: null, gitActiveBranch: null });
 
 		try {
 			const bridge = getBridge();
@@ -404,6 +420,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 						const activeProject = get().project;
 						if (activeProject?.projectDir === requestedDir) {
 							set({ gitRemoteOrigin: null });
+						}
+					});
+
+				// Detect active branch in background (fire-and-forget).
+				// Same race-condition guard as above.
+				bridge
+					.gitListBranches({ projectDir })
+					.then((result) => {
+						const activeProject = get().project;
+						if (activeProject?.projectDir === requestedDir && result.ok) {
+							set({ gitActiveBranch: result.currentBranch ?? null });
+						}
+					})
+					.catch(() => {
+						const activeProject = get().project;
+						if (activeProject?.projectDir === requestedDir) {
+							set({ gitActiveBranch: null });
 						}
 					});
 			} else {
@@ -567,6 +600,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 			lastLoadResult: null,
 			lastValidationResult: null,
 			gitRemoteOrigin: null,
+			gitActiveBranch: null,
 			currentView: "browser",
 			lastError: null,
 		});
@@ -591,6 +625,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
 	clearError() {
 		set({ lastError: null });
+	},
+
+	// ── Sync Git header state from external hooks ────────────────────────────
+
+	syncGitHeaderState(remote, branch) {
+		set({ gitRemoteOrigin: remote, gitActiveBranch: branch });
 	},
 }));
 

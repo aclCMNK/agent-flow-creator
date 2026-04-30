@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { VisibilityStatus } from "../utils/repoVisibility.ts";
 import { detectRepoVisibility } from "../utils/repoVisibility.ts";
+import { useProjectStore } from "../store/projectStore.ts";
 
 export interface ConnectParams {
 	url: string;
@@ -326,6 +327,29 @@ export function useGitConfig(projectDir: string | null): UseGitConfigResult {
 				hasGit: result.hasGit,
 				remoteUrl: result.remoteUrl,
 			});
+
+			// Sync remote + active branch to global store (fire-and-forget).
+			// Only when a remote is configured — covers EC-3 (remote added outside editor).
+			if (result.remoteUrl !== null) {
+				bridge
+					.gitListBranches({ projectDir })
+					.then((branchResult) => {
+						const currentProject = useProjectStore.getState().project;
+						if (currentProject?.projectDir === projectDir) {
+							useProjectStore.getState().syncGitHeaderState(
+								result.remoteUrl,
+								branchResult.ok ? (branchResult.currentBranch ?? null) : null,
+							);
+						}
+					})
+					.catch(() => {
+						const currentProject = useProjectStore.getState().project;
+						if (currentProject?.projectDir === projectDir) {
+							useProjectStore.getState().syncGitHeaderState(result.remoteUrl, null);
+						}
+					});
+			}
+
 			if (result.remoteUrl !== null) {
 				await detectMainBranch();
 			}
@@ -453,9 +477,30 @@ export function useGitConfig(projectDir: string | null): UseGitConfigResult {
 					return;
 				}
 
-				dispatch({ type: "CONNECT_SUCCESS", remoteUrl: params.url });
+			dispatch({ type: "CONNECT_SUCCESS", remoteUrl: params.url });
 
-				const detectResult = await bridge.gitDetectMainBranch({ projectDir });
+			// Sync remote + active branch to global store (fire-and-forget).
+			// This ensures the header shows the remote and branch after integration
+			// from the editor (CA-1, CA-3). Guard against project change (EC-4).
+			bridge
+				.gitListBranches({ projectDir })
+				.then((result) => {
+					const currentProject = useProjectStore.getState().project;
+					if (currentProject?.projectDir === projectDir) {
+						useProjectStore.getState().syncGitHeaderState(
+							params.url,
+							result.ok ? (result.currentBranch ?? null) : null,
+						);
+					}
+				})
+				.catch(() => {
+					const currentProject = useProjectStore.getState().project;
+					if (currentProject?.projectDir === projectDir) {
+						useProjectStore.getState().syncGitHeaderState(params.url, null);
+					}
+				});
+
+			const detectResult = await bridge.gitDetectMainBranch({ projectDir });
 				if (!detectResult.ok) {
 					dispatch({ type: "DETECT_MAIN_BRANCH_ERROR", error: detectResult.message });
 					return;

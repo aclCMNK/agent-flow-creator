@@ -115,6 +115,7 @@ function EditorView() {
 		lastError,
 		clearError,
 		gitRemoteOrigin,
+		gitActiveBranch,
 	} = useProjectStore();
 
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -213,10 +214,20 @@ function EditorView() {
 					<span className="editor-view__project-name">
 						{project?.name ?? "Untitled Project"}
 					</span>
-					{gitRemoteOrigin && (
-						<span className="git-remote-badge" title={gitRemoteOrigin}>
+					{(gitRemoteOrigin || gitActiveBranch) && (
+						<span className="git-remote-badge" title={gitRemoteOrigin ?? undefined}>
 							<span aria-hidden="true">⎇</span>
-							<span className="git-remote-url">{gitRemoteOrigin}</span>
+							{gitRemoteOrigin && (
+								<span className="git-remote-url">{gitRemoteOrigin}</span>
+							)}
+							{gitActiveBranch && (
+								<>
+									{gitRemoteOrigin && (
+										<span className="git-remote-separator" aria-hidden="true">·</span>
+									)}
+									<span className="git-active-branch">{gitActiveBranch}</span>
+								</>
+							)}
 						</span>
 					)}
 					{issueCount > 0 && (
