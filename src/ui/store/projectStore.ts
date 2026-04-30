@@ -20,13 +20,13 @@
 
 import { create } from "zustand";
 import type {
-  BridgeLoadResult,
-  SerializableProjectModel,
-  BridgeValidationIssue,
-  RecentProject,
-  CreateProjectRequest,
-  CreateProjectResult,
-  NewProjectDirValidation,
+	BridgeLoadResult,
+	SerializableProjectModel,
+	BridgeValidationIssue,
+	RecentProject,
+	CreateProjectRequest,
+	CreateProjectResult,
+	NewProjectDirValidation,
 } from "../../electron/bridge.types.ts";
 
 // ── Safe bridge accessor ───────────────────────────────────────────────────
@@ -37,150 +37,200 @@ import type {
 import type { AgentsFlowBridge } from "../../electron/bridge.types.ts";
 
 function notAvailable(method: string): never {
-  throw new Error(
-    `[AgentsFlow] window.agentsFlow.${method}() is not available outside of Electron. ` +
-      `Preload script may not have run — check contextIsolation + preload config.`
-  );
+	throw new Error(
+		`[AgentsFlow] window.agentsFlow.${method}() is not available outside of Electron. ` +
+			`Preload script may not have run — check contextIsolation + preload config.`,
+	);
 }
 
 const _stub: AgentsFlowBridge = {
-  openFolderDialog: () => notAvailable("openFolderDialog"),
-  openFileDialog: () => notAvailable("openFileDialog"),
-  selectNewProjectDir: () => notAvailable("selectNewProjectDir"),
-  validateNewProjectDir: () => notAvailable("validateNewProjectDir"),
-  createProject: () => notAvailable("createProject"),
-  loadProject: () => notAvailable("loadProject"),
-  validateProject: () => notAvailable("validateProject"),
-  repairProject: () => notAvailable("repairProject"),
-  saveProject: () => notAvailable("saveProject"),
-  saveAgentGraph: () => notAvailable("saveAgentGraph"),
-  exportProject: () => notAvailable("exportProject"),
-  getRecentProjects: () => Promise.resolve([]),
-  assetListDirs: () => Promise.resolve([]),
-  assetListDirContents: () => Promise.resolve({ dirPath: "", files: [], subdirs: [] }),
-  assetReadFile: () => Promise.resolve({ success: false, error: "Not in Electron" }),
-  assetWriteFile: () => notAvailable("assetWriteFile"),
-  assetCreateDir: () => notAvailable("assetCreateDir"),
-  assetRename: () => notAvailable("assetRename"),
-  assetDelete: () => notAvailable("assetDelete"),
-  assetImportFile: () => notAvailable("assetImportFile"),
-  assetOpenMdDialog: () => Promise.resolve(null),
-  // Adapter / OpenCode (added in adapter feature)
-  adataGetAdapter: () => notAvailable("adataGetAdapter"),
-  adataSetAdapter: () => notAvailable("adataSetAdapter"),
-  adataGetOpenCodeConfig: () => notAvailable("adataGetOpenCodeConfig"),
-  adataSetOpenCodeConfig: () => notAvailable("adataSetOpenCodeConfig"),
-  // Agent Profiling (Phase 1 infrastructure)
-  adataListProfiles: () => notAvailable("adataListProfiles"),
-  adataAddProfile: () => notAvailable("adataAddProfile"),
-  adataUpdateProfile: () => notAvailable("adataUpdateProfile"),
-  adataRemoveProfile: () => notAvailable("adataRemoveProfile"),
-  adataReorderProfiles: () => notAvailable("adataReorderProfiles"),
-  // Permissions
-  adataGetPermissions: () => notAvailable("adataGetPermissions"),
-  adataSetPermissions: () => notAvailable("adataSetPermissions"),
-  // Skills
-  adataListSkills: () => notAvailable("adataListSkills"),
-  // Agent rename (slug-first)
-  renameAgentFolder: () => notAvailable("renameAgentFolder"),
-  // Export modal
-  selectExportDir: () => notAvailable("selectExportDir"),
-  writeExportFile: () => notAvailable("writeExportFile"),
-  listSkillsFull: () => notAvailable("listSkillsFull"),
-  readAgentProfilesFull: () => notAvailable("readAgentProfilesFull"),
-  readAgentAdataRaw: () => notAvailable("readAgentAdataRaw"),
+	openFolderDialog: () => notAvailable("openFolderDialog"),
+	openFileDialog: () => notAvailable("openFileDialog"),
+	selectNewProjectDir: () => notAvailable("selectNewProjectDir"),
+	validateNewProjectDir: () => notAvailable("validateNewProjectDir"),
+	createProject: () => notAvailable("createProject"),
+	loadProject: () => notAvailable("loadProject"),
+	validateProject: () => notAvailable("validateProject"),
+	repairProject: () => notAvailable("repairProject"),
+	saveProject: () => notAvailable("saveProject"),
+	saveAgentGraph: () => notAvailable("saveAgentGraph"),
+	exportProject: () => notAvailable("exportProject"),
+	getRecentProjects: () => Promise.resolve([]),
+	assetListDirs: () => Promise.resolve([]),
+	assetListDirContents: () =>
+		Promise.resolve({ dirPath: "", files: [], subdirs: [] }),
+	assetReadFile: () =>
+		Promise.resolve({ success: false, error: "Not in Electron" }),
+	assetWriteFile: () => notAvailable("assetWriteFile"),
+	assetCreateDir: () => notAvailable("assetCreateDir"),
+	assetRename: () => notAvailable("assetRename"),
+	assetDelete: () => notAvailable("assetDelete"),
+	assetImportFile: () => notAvailable("assetImportFile"),
+	assetOpenMdDialog: () => Promise.resolve(null),
+	assetMove: () => notAvailable("assetMove"),
+	// Adapter / OpenCode (added in adapter feature)
+	adataGetAdapter: () => notAvailable("adataGetAdapter"),
+	adataSetAdapter: () => notAvailable("adataSetAdapter"),
+	adataGetOpenCodeConfig: () => notAvailable("adataGetOpenCodeConfig"),
+	adataSetOpenCodeConfig: () => notAvailable("adataSetOpenCodeConfig"),
+	// Agent Profiling (Phase 1 infrastructure)
+	adataListProfiles: () => notAvailable("adataListProfiles"),
+	adataAddProfile: () => notAvailable("adataAddProfile"),
+	adataUpdateProfile: () => notAvailable("adataUpdateProfile"),
+	adataRemoveProfile: () => notAvailable("adataRemoveProfile"),
+	adataReorderProfiles: () => notAvailable("adataReorderProfiles"),
+	// Permissions
+	adataGetPermissions: () => notAvailable("adataGetPermissions"),
+	adataSetPermissions: () => notAvailable("adataSetPermissions"),
+	// Skills
+	adataListSkills: () => notAvailable("adataListSkills"),
+	// Agent rename (slug-first)
+	renameAgentFolder: () => notAvailable("renameAgentFolder"),
+	// Export modal
+	selectExportDir: () => notAvailable("selectExportDir"),
+	writeExportFile: () => notAvailable("writeExportFile"),
+	listSkillsFull: () => notAvailable("listSkillsFull"),
+	readAgentProfilesFull: () => notAvailable("readAgentProfilesFull"),
+	readAgentAdataRaw: () => notAvailable("readAgentAdataRaw"),
+	// Git remote origin detection
+	getGitRemoteOrigin: () => Promise.resolve(null),
+	gitGetConfig: () => notAvailable("gitGetConfig"),
+	gitInit: () => notAvailable("gitInit"),
+	gitSetRemote: () => notAvailable("gitSetRemote"),
+	gitSaveCredentials: () => notAvailable("gitSaveCredentials"),
+	gitSetIdentity: () => notAvailable("gitSetIdentity"),
+	gitDetectMainBranch: () => notAvailable("gitDetectMainBranch"),
+	gitListBranches: () => notAvailable("gitListBranches"),
+	gitGetRemoteDiff: () => notAvailable("gitGetRemoteDiff"),
+	gitFetchAndPull: () => notAvailable("gitFetchAndPull"),
+	gitPullBranch: () => notAvailable("gitPullBranch"),
+	gitCheckoutBranch: () => notAvailable("gitCheckoutBranch"),
+	gitGetBranchCommits: () => notAvailable("gitGetBranchCommits"),
+	gitCreateBranch: () => notAvailable("gitCreateBranch"),
+	gitGetStatus: () => notAvailable("gitGetStatus"),
+	gitAddAndCommit: () => notAvailable("gitAddAndCommit"),
 };
 
 function getBridge(): AgentsFlowBridge {
-  if (
-    typeof window !== "undefined" &&
-    typeof (window as Window & typeof globalThis).agentsFlow !== "undefined"
-  ) {
-    return window.agentsFlow;
-  }
-  return _stub;
+	if (
+		typeof window !== "undefined" &&
+		typeof (window as Window & typeof globalThis).agentsFlow !== "undefined"
+	) {
+		return window.agentsFlow;
+	}
+	return _stub;
 }
 
 // ── View routing ───────────────────────────────────────────────────────────
 
 export type AppView =
-  | "browser"       // Project browser (open/create project)
-  | "validation"    // Validation panel (errors/warnings)
-  | "editor"        // Canvas editor (agents list + placeholder canvas)
-  | "assets";       // Asset panel (markdown file manager)
+	| "browser" // Project browser (open/create project)
+	| "validation" // Validation panel (errors/warnings)
+	| "editor" // Canvas editor (agents list + placeholder canvas)
+	| "assets"; // Asset panel (markdown file manager)
 
 // ── Store state ────────────────────────────────────────────────────────────
 
 export interface ProjectState {
-  // ── Current view ────────────────────────────────────────────────────────
-  currentView: AppView;
+	// ── Current view ────────────────────────────────────────────────────────
+	currentView: AppView;
 
-  // ── Project data ─────────────────────────────────────────────────────────
-  /** The currently loaded project, or null if no project is open */
-  project: SerializableProjectModel | null;
+	// ── Project data ─────────────────────────────────────────────────────────
+	/** The currently loaded project, or null if no project is open */
+	project: SerializableProjectModel | null;
 
-  /** Last load result — kept even after success for issue reporting */
-  lastLoadResult: BridgeLoadResult | null;
+	/** Last load result — kept even after success for issue reporting */
+	lastLoadResult: BridgeLoadResult | null;
 
-  /** Last standalone validation result (from validateProject) */
-  lastValidationResult: BridgeLoadResult | null;
+	/** Last standalone validation result (from validateProject) */
+	lastValidationResult: BridgeLoadResult | null;
 
-  // ── Recent projects ──────────────────────────────────────────────────────
-  recentProjects: RecentProject[];
+	// ── Git remote origin ─────────────────────────────────────────────────────
+	/**
+	 * URL of the remote `origin` for the current project's Git repository.
+	 * `null` when the project has no `.git`, no `origin` remote, or git is
+	 * unavailable. Populated asynchronously after `openProject` succeeds.
+	 */
+	gitRemoteOrigin: string | null;
 
-  // ── Async state ──────────────────────────────────────────────────────────
-  isLoading: boolean;
-  isValidating: boolean;
-  isSaving: boolean;
-  isExporting: boolean;
-  isRepairing: boolean;
+	/**
+	 * Active branch name for the current project's Git repository.
+	 * `null` when the project has no `.git`, no commits yet, or git is
+	 * unavailable. Populated asynchronously after `openProject` succeeds
+	 * or after a successful Git integration from the editor.
+	 */
+	gitActiveBranch: string | null;
 
-  /** Last error message from any async operation */
-  lastError: string | null;
+	// ── Recent projects ──────────────────────────────────────────────────────
+	recentProjects: RecentProject[];
+
+	// ── Async state ──────────────────────────────────────────────────────────
+	isLoading: boolean;
+	isValidating: boolean;
+	isSaving: boolean;
+	isExporting: boolean;
+	isRepairing: boolean;
+
+	/** Last error message from any async operation */
+	lastError: string | null;
 }
 
 // ── Store actions ──────────────────────────────────────────────────────────
 
 export interface ProjectActions {
-  // ── View navigation ──────────────────────────────────────────────────────
-  navigate(view: AppView): void;
+	// ── View navigation ──────────────────────────────────────────────────────
+	navigate(view: AppView): void;
 
-  // ── Open a project via the native folder picker ──────────────────────────
-  openProjectDialog(): Promise<void>;
+	// ── Open a project via the native folder picker ──────────────────────────
+	openProjectDialog(): Promise<void>;
 
-  // ── Open a native folder-picker dialog for NEW project creation ──────────
-  // Returns the chosen directory path, or null if the user cancelled.
-  selectNewProjectDir(): Promise<string | null>;
+	// ── Open a native folder-picker dialog for NEW project creation ──────────
+	// Returns the chosen directory path, or null if the user cancelled.
+	selectNewProjectDir(): Promise<string | null>;
 
-  // ── Open a project from a known directory path ───────────────────────────
-  openProject(projectDir: string): Promise<void>;
+	// ── Open a project from a known directory path ───────────────────────────
+	openProject(projectDir: string): Promise<void>;
 
-  // ── Validate a candidate directory for new project creation (no writes) ──
-  validateNewProjectDir(dir: string): Promise<NewProjectDirValidation | null>;
+	// ── Validate a candidate directory for new project creation (no writes) ──
+	validateNewProjectDir(dir: string): Promise<NewProjectDirValidation | null>;
 
-  // ── Create a new project scaffold, then open it ──────────────────────────
-  createProject(req: CreateProjectRequest): Promise<CreateProjectResult>;
+	// ── Create a new project scaffold, then open it ──────────────────────────
+	createProject(req: CreateProjectRequest): Promise<CreateProjectResult>;
 
-  // ── Validate a project (dry-run — does NOT load it into memory) ──────────
-  validateProject(projectDir: string): Promise<void>;
+	// ── Validate a project (dry-run — does NOT load it into memory) ──────────
+	validateProject(projectDir: string): Promise<void>;
 
-  // ── Apply repairs to a project and reload ────────────────────────────────
-  repairAndReload(projectDir: string): Promise<void>;
+	// ── Apply repairs to a project and reload ────────────────────────────────
+	repairAndReload(projectDir: string): Promise<void>;
 
-  // ── Save the current project's top-level fields to disk ──────────────────
-  saveProject(updates: { name?: string; description?: string; properties?: Record<string, unknown> }): Promise<void>;
+	// ── Save the current project's top-level fields to disk ──────────────────
+	saveProject(updates: {
+		name?: string;
+		description?: string;
+		properties?: Record<string, unknown>;
+	}): Promise<void>;
 
-  // ── Export the current project as a JSON archive ─────────────────────────
-  exportProject(): Promise<void>;
+	// ── Export the current project as a JSON archive ─────────────────────────
+	exportProject(): Promise<void>;
 
-  // ── Load the list of recently opened projects ────────────────────────────
-  loadRecentProjects(): Promise<void>;
+	// ── Load the list of recently opened projects ────────────────────────────
+	loadRecentProjects(): Promise<void>;
 
-  // ── Close the current project and return to the browser ──────────────────
-  closeProject(): void;
+	// ── Close the current project and return to the browser ──────────────────
+	closeProject(): void;
 
-  // ── Clear the last error ─────────────────────────────────────────────────
-  clearError(): void;
+	// ── Open a cloned project, prompting if another project is already open ──
+	openProjectAfterClone(clonedPath: string): Promise<void>;
+
+	// ── Clear the last error ─────────────────────────────────────────────────
+	clearError(): void;
+
+	// ── Sync Git header state from external hooks (e.g. useGitConfig) ────────
+	/**
+	 * Synchronizes the Git header state (remote URL and active branch) from
+	 * external hooks. Call after operations that change the remote or active branch.
+	 */
+	syncGitHeaderState(remote: string | null, branch: string | null): void;
 }
 
 // ── Store type ─────────────────────────────────────────────────────────────
@@ -190,348 +240,419 @@ export type ProjectStore = ProjectState & ProjectActions;
 // ── Initial state ──────────────────────────────────────────────────────────
 
 const initialState: ProjectState = {
-  currentView: "browser",
-  project: null,
-  lastLoadResult: null,
-  lastValidationResult: null,
-  recentProjects: [],
-  isLoading: false,
-  isValidating: false,
-  isSaving: false,
-  isExporting: false,
-  isRepairing: false,
-  lastError: null,
+	currentView: "browser",
+	project: null,
+	lastLoadResult: null,
+	lastValidationResult: null,
+	gitRemoteOrigin: null,
+	gitActiveBranch: null,
+	recentProjects: [],
+	isLoading: false,
+	isValidating: false,
+	isSaving: false,
+	isExporting: false,
+	isRepairing: false,
+	lastError: null,
 };
 
 // ── Store implementation ───────────────────────────────────────────────────
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
-  ...initialState,
+	...initialState,
 
-  // ── View navigation ────────────────────────────────────────────────────
+	// ── View navigation ────────────────────────────────────────────────────
 
-  navigate(view) {
-    set({ currentView: view });
-  },
+	navigate(view) {
+		set({ currentView: view });
+	},
 
-  // ── Open project via dialog ────────────────────────────────────────────
+	// ── Open project via dialog ────────────────────────────────────────────
 
-  async openProjectDialog() {
-    // Guard: do not open a second dialog if already loading/validating
-    if (get().isLoading || get().isValidating) return;
+	async openProjectDialog() {
+		// Guard: do not open a second dialog if already loading/validating
+		if (get().isLoading || get().isValidating) return;
 
-    set({ isLoading: true, lastError: null });
+		set({ isLoading: true, lastError: null });
 
-    const bridge = getBridge();
-    let projectDir: string | null = null;
+		const bridge = getBridge();
+		let projectDir: string | null = null;
 
-    try {
-      projectDir = await bridge.openFolderDialog();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ isLoading: false, lastError: message });
-      return;
-    }
+		try {
+			projectDir = await bridge.openFolderDialog();
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({ isLoading: false, lastError: message });
+			return;
+		}
 
-    if (!projectDir) {
-      // User cancelled the dialog — reset loading state
-      set({ isLoading: false });
-      return;
-    }
+		if (!projectDir) {
+			// User cancelled the dialog — reset loading state
+			set({ isLoading: false });
+			return;
+		}
 
-    // openProject will handle its own isLoading lifecycle from here
-    set({ isLoading: false });
-    await get().openProject(projectDir);
-  },
+		// openProject will handle its own isLoading lifecycle from here
+		set({ isLoading: false });
+		await get().openProject(projectDir);
+	},
 
-  // ── Open native folder-picker dialog for NEW project creation ─────────
+	// ── Open native folder-picker dialog for NEW project creation ─────────
 
-  async selectNewProjectDir(): Promise<string | null> {
-    const bridge = getBridge();
-    try {
-      const dir = await bridge.selectNewProjectDir();
-      return dir ?? null;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ lastError: message });
-      return null;
-    }
-  },
+	async selectNewProjectDir(): Promise<string | null> {
+		const bridge = getBridge();
+		try {
+			const dir = await bridge.selectNewProjectDir();
+			return dir ?? null;
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({ lastError: message });
+			return null;
+		}
+	},
 
-  // ── Validate new project directory ────────────────────────────────────
+	// ── Validate new project directory ────────────────────────────────────
 
-  async validateNewProjectDir(dir: string): Promise<NewProjectDirValidation | null> {
-    try {
-      const bridge = getBridge();
-      return await bridge.validateNewProjectDir(dir);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ lastError: message });
-      return null;
-    }
-  },
+	async validateNewProjectDir(
+		dir: string,
+	): Promise<NewProjectDirValidation | null> {
+		try {
+			const bridge = getBridge();
+			return await bridge.validateNewProjectDir(dir);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({ lastError: message });
+			return null;
+		}
+	},
 
-  // ── Create new project ─────────────────────────────────────────────────
-  // 1. Call bridge.createProject (main process: validate + scaffold + rollback)
-  // 2. On success, load the new project and navigate to the editor
+	// ── Create new project ─────────────────────────────────────────────────
+	// 1. Call bridge.createProject (main process: validate + scaffold + rollback)
+	// 2. On success, load the new project and navigate to the editor
 
-  async createProject(req: CreateProjectRequest): Promise<CreateProjectResult> {
-    set({ isLoading: true, lastError: null });
+	async createProject(req: CreateProjectRequest): Promise<CreateProjectResult> {
+		set({ isLoading: true, lastError: null });
 
-    try {
-      const bridge = getBridge();
-      const createResult = await bridge.createProject(req);
+		try {
+			const bridge = getBridge();
+			const createResult = await bridge.createProject(req);
 
-      if (!createResult.success || !createResult.projectDir) {
-        set({ isLoading: false, lastError: createResult.error ?? "Failed to create project." });
-        return createResult;
-      }
+			if (!createResult.success || !createResult.projectDir) {
+				set({
+					isLoading: false,
+					lastError: createResult.error ?? "Failed to create project.",
+				});
+				return createResult;
+			}
 
-      // Project scaffold created — now load it into state
-      const loadResult = await bridge.loadProject({
-        projectDir: createResult.projectDir,
-      });
+			// Project scaffold created — now load it into state
+			const loadResult = await bridge.loadProject({
+				projectDir: createResult.projectDir,
+			});
 
-      set({
-        lastLoadResult: loadResult,
-        lastValidationResult: null,
-        isLoading: false,
-      });
+			set({
+				lastLoadResult: loadResult,
+				lastValidationResult: null,
+				isLoading: false,
+			});
 
-      if (loadResult.success && loadResult.project) {
-        set({
-          project: loadResult.project,
-          currentView: "editor",
-        });
-      } else {
-        // Created but failed to load (shouldn't happen with a fresh scaffold)
-        set({
-          project: null,
-          currentView: "validation",
-          lastError: "Project was created but could not be loaded. See the validation panel.",
-        });
-      }
+			if (loadResult.success && loadResult.project) {
+				set({
+					project: loadResult.project,
+					currentView: "editor",
+				});
+			} else {
+				// Created but failed to load (shouldn't happen with a fresh scaffold)
+				set({
+					project: null,
+					currentView: "validation",
+					lastError:
+						"Project was created but could not be loaded. See the validation panel.",
+				});
+			}
 
-      return createResult;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ isLoading: false, lastError: message });
-      return { success: false, error: message, errorCode: "IO_ERROR" };
-    }
-  },
+			return createResult;
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({ isLoading: false, lastError: message });
+			return { success: false, error: message, errorCode: "IO_ERROR" };
+		}
+	},
 
-  // ── Open project from path ─────────────────────────────────────────────
+	// ── Open project from path ─────────────────────────────────────────────
 
-  async openProject(projectDir) {
-    set({ isLoading: true, lastError: null });
+	async openProject(projectDir) {
+		// Clear git badge immediately so the UI never shows a stale remote
+		// from a previously opened project while this load is in flight.
+		set({ isLoading: true, lastError: null, gitRemoteOrigin: null, gitActiveBranch: null });
 
-    try {
-      const bridge = getBridge();
-      const result = await bridge.loadProject({ projectDir });
+		try {
+			const bridge = getBridge();
+			const result = await bridge.loadProject({ projectDir });
 
-      set({
-        lastLoadResult: result,
-        lastValidationResult: null, // Clear stale validation result on fresh load
-        isLoading: false,
-      });
+			set({
+				lastLoadResult: result,
+				lastValidationResult: null, // Clear stale validation result on fresh load
+				isLoading: false,
+			});
 
-      if (result.success && result.project) {
-        // Load succeeded — navigate to editor (with optional warnings badge)
-        set({
-          project: result.project,
-          currentView: result.issues.length > 0 ? "validation" : "editor",
-        });
-      } else {
-        // Load failed — show validation view with error list
-        set({
-          project: null,
-          currentView: "validation",
-          lastError:
-            result.summary.errors > 0
-              ? `Project has ${result.summary.errors} blocking error(s). See the validation panel.`
-              : "Project could not be loaded. See the validation panel for details.",
-        });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({
-        isLoading: false,
-        lastError: message,
-        project: null,
-      });
-    }
-  },
+			if (result.success && result.project) {
+				// Load succeeded — navigate to editor (with optional warnings badge)
+				set({
+					project: result.project,
+					currentView: result.issues.length > 0 ? "validation" : "editor",
+				});
 
-  // ── Validate project (dry-run) ─────────────────────────────────────────
+				// Detect Git remote origin in background — never blocks the UI.
+				// `requestedDir` is captured in the closure so that if the user
+				// switches to another project before this promise settles, the
+				// stale response is silently discarded (race-condition guard).
+				const requestedDir = projectDir;
+				bridge
+					.getGitRemoteOrigin(projectDir)
+					.then((remoteUrl) => {
+						// Only apply if the active project is still the one we queried.
+						const activeProject = get().project;
+						if (activeProject?.projectDir === requestedDir) {
+							set({ gitRemoteOrigin: remoteUrl ?? null });
+						}
+					})
+					.catch(() => {
+						const activeProject = get().project;
+						if (activeProject?.projectDir === requestedDir) {
+							set({ gitRemoteOrigin: null });
+						}
+					});
 
-  async validateProject(projectDir) {
-    set({ isValidating: true, lastError: null });
+				// Detect active branch in background (fire-and-forget).
+				// Same race-condition guard as above.
+				bridge
+					.gitListBranches({ projectDir })
+					.then((result) => {
+						const activeProject = get().project;
+						if (activeProject?.projectDir === requestedDir && result.ok) {
+							set({ gitActiveBranch: result.currentBranch ?? null });
+						}
+					})
+					.catch(() => {
+						const activeProject = get().project;
+						if (activeProject?.projectDir === requestedDir) {
+							set({ gitActiveBranch: null });
+						}
+					});
+			} else {
+				// Load failed — show validation view with error list
+				set({
+					project: null,
+					currentView: "validation",
+					lastError:
+						result.summary.errors > 0
+							? `Project has ${result.summary.errors} blocking error(s). See the validation panel.`
+							: "Project could not be loaded. See the validation panel for details.",
+				});
+			}
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({
+				isLoading: false,
+				lastError: message,
+				project: null,
+			});
+		}
+	},
 
-    try {
-      const bridge = getBridge();
-      const result = await bridge.validateProject({ projectDir });
+	// ── Validate project (dry-run) ─────────────────────────────────────────
 
-      set({
-        lastValidationResult: result,
-        isValidating: false,
-        currentView: "validation",
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ isValidating: false, lastError: message });
-    }
-  },
+	async validateProject(projectDir) {
+		set({ isValidating: true, lastError: null });
 
-  // ── Repair and reload project ──────────────────────────────────────────
-  // Uses the dedicated repairProject IPC channel (mode: "repair" on main process).
-  // Applies all auto-fixes and reloads the model. Called from ValidationPanel.
+		try {
+			const bridge = getBridge();
+			const result = await bridge.validateProject({ projectDir });
 
-  async repairAndReload(projectDir) {
-    set({ isRepairing: true, lastError: null });
+			set({
+				lastValidationResult: result,
+				isValidating: false,
+				currentView: "validation",
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({ isValidating: false, lastError: message });
+		}
+	},
 
-    try {
-      const bridge = getBridge();
-      const result = await bridge.repairProject({ projectDir });
+	// ── Repair and reload project ──────────────────────────────────────────
+	// Uses the dedicated repairProject IPC channel (mode: "repair" on main process).
+	// Applies all auto-fixes and reloads the model. Called from ValidationPanel.
 
-      set({
-        lastLoadResult: result,
-        lastValidationResult: null,
-        isRepairing: false,
-      });
+	async repairAndReload(projectDir) {
+		set({ isRepairing: true, lastError: null });
 
-      if (result.success && result.project) {
-        set({
-          project: result.project,
-          currentView: result.issues.length > 0 ? "validation" : "editor",
-        });
-      } else {
-        set({
-          project: null,
-          currentView: "validation",
-          lastError: `Repair completed but ${result.summary.errors} error(s) remain. Manual fix required.`,
-        });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ isRepairing: false, lastError: message });
-    }
-  },
+		try {
+			const bridge = getBridge();
+			const result = await bridge.repairProject({ projectDir });
 
-  // ── Save project ────────────────────────────────────────────────────────
+			set({
+				lastLoadResult: result,
+				lastValidationResult: null,
+				isRepairing: false,
+			});
 
-  async saveProject(updates) {
-    const { project } = get();
-    if (!project) return;
+			if (result.success && result.project) {
+				set({
+					project: result.project,
+					currentView: result.issues.length > 0 ? "validation" : "editor",
+				});
+			} else {
+				set({
+					project: null,
+					currentView: "validation",
+					lastError: `Repair completed but ${result.summary.errors} error(s) remain. Manual fix required.`,
+				});
+			}
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({ isRepairing: false, lastError: message });
+		}
+	},
 
-    set({ isSaving: true, lastError: null });
+	// ── Save project ────────────────────────────────────────────────────────
 
-    try {
-      const bridge = getBridge();
-      const result = await bridge.saveProject({
-        projectDir: project.projectDir,
-        updates,
-      });
+	async saveProject(updates) {
+		const { project } = get();
+		if (!project) return;
 
-      if (result.success) {
-        // Optimistically update local state to reflect saved changes
-        set({
-          project: {
-            ...project,
-            ...(updates.name !== undefined ? { name: updates.name } : {}),
-            ...(updates.description !== undefined
-              ? { description: updates.description }
-              : {}),
-            ...(updates.properties !== undefined
-              ? { properties: updates.properties }
-              : {}),
-          },
-          isSaving: false,
-        });
-      } else {
-        set({ isSaving: false, lastError: result.error ?? "Save failed." });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ isSaving: false, lastError: message });
-    }
-  },
+		set({ isSaving: true, lastError: null });
 
-  // ── Export project ──────────────────────────────────────────────────────
+		try {
+			const bridge = getBridge();
+			const result = await bridge.saveProject({
+				projectDir: project.projectDir,
+				updates,
+			});
 
-  async exportProject() {
-    const { project } = get();
-    if (!project) return;
+			if (result.success) {
+				// Optimistically update local state to reflect saved changes
+				set({
+					project: {
+						...project,
+						...(updates.name !== undefined ? { name: updates.name } : {}),
+						...(updates.description !== undefined
+							? { description: updates.description }
+							: {}),
+						...(updates.properties !== undefined
+							? { properties: updates.properties }
+							: {}),
+					},
+					isSaving: false,
+				});
+			} else {
+				set({ isSaving: false, lastError: result.error ?? "Save failed." });
+			}
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({ isSaving: false, lastError: message });
+		}
+	},
 
-    set({ isExporting: true, lastError: null });
+	// ── Export project ──────────────────────────────────────────────────────
 
-    try {
-      const bridge = getBridge();
-      // Omit destinationPath — the main process will open a native Save dialog
-      const result = await bridge.exportProject({
-        projectDir: project.projectDir,
-      });
+	async exportProject() {
+		const { project } = get();
+		if (!project) return;
 
-      if (!result.success) {
-        set({ lastError: result.error ?? "Export failed." });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ lastError: message });
-    } finally {
-      set({ isExporting: false });
-    }
-  },
+		set({ isExporting: true, lastError: null });
 
-  // ── Load recent projects ────────────────────────────────────────────────
+		try {
+			const bridge = getBridge();
+			// Omit destinationPath — the main process will open a native Save dialog
+			const result = await bridge.exportProject({
+				projectDir: project.projectDir,
+			});
 
-  async loadRecentProjects() {
-    try {
-      const bridge = getBridge();
-      const recents = await bridge.getRecentProjects();
-      set({ recentProjects: recents });
-    } catch {
-      // Non-critical — don't set lastError for this
-    }
-  },
+			if (!result.success) {
+				set({ lastError: result.error ?? "Export failed." });
+			}
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			set({ lastError: message });
+		} finally {
+			set({ isExporting: false });
+		}
+	},
 
-  // ── Close project ────────────────────────────────────────────────────────
+	// ── Load recent projects ────────────────────────────────────────────────
 
-  closeProject() {
-    set({
-      project: null,
-      lastLoadResult: null,
-      lastValidationResult: null,
-      currentView: "browser",
-      lastError: null,
-    });
-  },
+	async loadRecentProjects() {
+		try {
+			const bridge = getBridge();
+			const recents = await bridge.getRecentProjects();
+			set({ recentProjects: recents });
+		} catch {
+			// Non-critical — don't set lastError for this
+		}
+	},
 
-  // ── Clear error ─────────────────────────────────────────────────────────
+	// ── Close project ────────────────────────────────────────────────────────
 
-  clearError() {
-    set({ lastError: null });
-  },
+	closeProject() {
+		set({
+			project: null,
+			lastLoadResult: null,
+			lastValidationResult: null,
+			gitRemoteOrigin: null,
+			gitActiveBranch: null,
+			currentView: "browser",
+			lastError: null,
+		});
+	},
+
+	// ── Open project after clone (with confirmation if project is open) ──────
+
+	async openProjectAfterClone(clonedPath: string) {
+		const { project } = get();
+
+		if (project !== null) {
+			const confirmed = window.confirm(
+				"A project is already open. Close it and open the cloned project?",
+			);
+			if (!confirmed) return;
+		}
+
+		await get().openProject(clonedPath);
+	},
+
+	// ── Clear error ─────────────────────────────────────────────────────────
+
+	clearError() {
+		set({ lastError: null });
+	},
+
+	// ── Sync Git header state from external hooks ────────────────────────────
+
+	syncGitHeaderState(remote, branch) {
+		set({ gitRemoteOrigin: remote, gitActiveBranch: branch });
+	},
 }));
 
 // ── Selectors ──────────────────────────────────────────────────────────────
 
 /** Returns all issues from the last load or validation result, or [] */
 export function selectAllIssues(store: ProjectState): BridgeValidationIssue[] {
-  const result = store.lastValidationResult ?? store.lastLoadResult;
-  return result?.issues ?? [];
+	const result = store.lastValidationResult ?? store.lastLoadResult;
+	return result?.issues ?? [];
 }
 
 /** Returns only error-severity issues */
 export function selectErrors(store: ProjectState): BridgeValidationIssue[] {
-  return selectAllIssues(store).filter((i) => i.severity === "error");
+	return selectAllIssues(store).filter((i) => i.severity === "error");
 }
 
 /** Returns only warning-severity issues */
 export function selectWarnings(store: ProjectState): BridgeValidationIssue[] {
-  return selectAllIssues(store).filter((i) => i.severity === "warning");
+	return selectAllIssues(store).filter((i) => i.severity === "warning");
 }
 
 /** Returns only info-severity issues */
 export function selectInfos(store: ProjectState): BridgeValidationIssue[] {
-  return selectAllIssues(store).filter((i) => i.severity === "info");
+	return selectAllIssues(store).filter((i) => i.severity === "info");
 }
