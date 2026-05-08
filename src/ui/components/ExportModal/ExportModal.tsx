@@ -140,7 +140,10 @@ import type {
   OpenCodeExportConfig,
   PluginEntry,
   AgentExportSnapshot,
+  McpEntry,
 } from "./export-logic.ts";
+import { isMcpEntry } from "./export-logic.ts";
+import { McpAdminTab } from "./McpAdminTab.tsx";
 
 // ── Platform-aware path separator for 'prompt' fields in exported JSON ──────
 // On Windows (win32) OpenCode expects backslash-separated paths in the 'prompt'
@@ -383,6 +386,16 @@ export function ExportModal({
   const [selectedSkillName, setSelectedSkillName] = useState<string | null>(null);
   const [skillsLoaded, setSkillsLoaded] = useState(false);
 
+  // ── MCPs tab state ─────────────────────────────────────────────────────
+  // Persistido en project.properties.mcps (array en .afproj)
+  const [mcps, setMcps] = useState<McpEntry[]>(() => {
+    const saved = project?.properties?.mcps;
+    if (Array.isArray(saved)) {
+      return (saved as unknown[]).filter(isMcpEntry);
+    }
+    return [];
+  });
+
   // ── Agents tab state ───────────────────────────────────────────────────
   const [selectedAgentIdForTab, setSelectedAgentIdForTab] = useState<string>("");
   const [agentAdataDisplay, setAgentAdataDisplay] = useState<string>("");
@@ -598,8 +611,55 @@ export function ExportModal({
     });
   }, [project, saveProject]);
 
+  // ── saveMcps ──────────────────────────────────────────────────────────────
+  // Persiste los MCPs en project.properties.mcps. Best-effort.
+  const saveMcps = useCallback((nextMcps: McpEntry[]) => {
+    if (!project) return;
+    const updatedProperties: Record<string, unknown> = {
+      ...(project.properties ?? {}),
+      mcps: nextMcps,
+    };
+    saveProject({ properties: updatedProperties }).catch((err: unknown) => {
+      console.warn("[ExportModal] No se pudo guardar los MCPs en project.properties:", err);
+    });
+  }, [project, saveProject]);
+
+  // ── MCP CRUD handlers ─────────────────────────────────────────────────────
+  const handleAddMcp = useCallback((entry: McpEntry) => {
+    setMcps((prev) => {
+      const next = [...prev, entry];
+      saveMcps(next);
+      return next;
+    });
+  }, [saveMcps]);
+
+  const handleUpdateMcp = useCallback((localId: string, updated: McpEntry) => {
+    setMcps((prev) => {
+      const next = prev.map((m) => m.localId === localId ? updated : m);
+      saveMcps(next);
+      return next;
+    });
+  }, [saveMcps]);
+
+  const handleDeleteMcp = useCallback((localId: string) => {
+    setMcps((prev) => {
+      const next = prev.filter((m) => m.localId !== localId);
+      saveMcps(next);
+      return next;
+    });
+  }, [saveMcps]);
+
+  const handleToggleMcp = useCallback((localId: string) => {
+    setMcps((prev) => {
+      const next = prev.map((m) =>
+        m.localId === localId ? { ...m, enabled: !m.enabled } : m
+      );
+      saveMcps(next);
+      return next;
+    });
+  }, [saveMcps]);
+
   const handleExport = useCallback(async () => {
-    if (!project || !bridge || !canExport) return;
     setIsExporting(true);
     setExportResult(null);
 
@@ -653,7 +713,7 @@ export function ExportModal({
         },
       }));
 
-      const output = buildOpenCodeV2Config(enriched, config, project.projectDir.split(/[\\/]/).pop() || project.name, undefined, EXPORT_PATH_SEPARATOR);
+      const output = buildOpenCodeV2Config(enriched, { ...config, mcps }, project.projectDir.split(/[\\/]/).pop() || project.name, undefined, EXPORT_PATH_SEPARATOR);
       const content = serializeOpenCodeV2Output(output, config.fileExtension);
 
       const writeResult = await bridge.writeExportFile({
@@ -1306,10 +1366,14 @@ export function ExportModal({
 
           {/* ── MCPs tab ────────────────────────────────────────────── */}
           {activeTab === "mcps" && (
-            <div className="export-modal__tab-pane export-modal__tab-pane--placeholder">
-              <p className="export-modal__placeholder-text">
-                This feature is not yet implemented.
-              </p>
+            <div className="export-modal__tab-pane export-modal__tab-pane--mcps">
+              <McpAdminTab
+                mcps={mcps}
+                onAdd={handleAddMcp}
+                onUpdate={handleUpdateMcp}
+                onDelete={handleDeleteMcp}
+                onToggle={handleToggleMcp}
+              />
             </div>
           )}
 

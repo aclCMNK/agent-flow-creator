@@ -65,6 +65,302 @@ export const EXPORT_TAB_LABELS: Record<ExportTab, string> = {
   plugins:   "Plugins",
 };
 
+// ── MCP entries ────────────────────────────────────────────────────────────
+
+/** Campos comunes a todos los MCPs */
+interface McpEntryBase {
+  /** Clave única del MCP — se usa como nombre de clave en el objeto "mcp" de OpenCode */
+  name: string;
+  /** Discriminador de tipo */
+  type: "local" | "remote";
+  /** Timeout en milisegundos. Default: 30000 para local, 10000 para remote */
+  timeout?: number;
+  /** Si el MCP está activo. Default: true. Se persiste en .afproj */
+  enabled: boolean;
+  /** ID local estable para operaciones de lista (no se exporta) */
+  localId: string;
+}
+
+/** MCP de tipo local (proceso stdio) */
+export interface McpLocalEntry extends McpEntryBase {
+  type: "local";
+  /** Array de strings: primer elemento es el ejecutable, resto son args */
+  command: string[];
+  /** Variables de entorno para el proceso. Objeto clave-valor de strings */
+  environment?: Record<string, string>;
+}
+
+/** MCP de tipo remote (HTTP/SSE) */
+export interface McpRemoteEntry extends McpEntryBase {
+  type: "remote";
+  /** URL del servidor MCP. Debe ser https:// o http:// */
+  url: string;
+  /** Headers HTTP adicionales. ADVERTENCIA: {env:VAR} NO funciona (issue #23664) */
+  headers?: Record<string, string>;
+}
+
+/** Unión discriminada de todos los tipos de MCP */
+export type McpEntry = McpLocalEntry | McpRemoteEntry;
+
+/** Forma del objeto MCP en el JSON exportado de OpenCode */
+export interface McpOpenCodeEntry {
+  type: "local" | "remote";
+  command?: string[];                   // solo local
+  environment?: Record<string, string>; // solo local
+  url?: string;                         // solo remote
+  headers?: Record<string, string>;     // solo remote
+  timeout?: number;                     // ambos (omitir si undefined)
+  enabled: boolean;                     // siempre presente
+}
+
+/** Resultado de validación de una entrada MCP */
+export interface McpValidationResult {
+  nameError: string | null;
+  commandError: string | null;
+  commandWarning: string | null;
+  urlError: string | null;
+  urlWarning: string | null;
+  envError: string | null;
+  headersError: string | null;
+  headersWarning: string | null;
+  isValid: boolean;
+}
+
+/**
+ * Type guard defensivo para McpEntry.
+ * Descarta datos legacy o corruptos al leer desde project.properties.mcps.
+ */
+export function isMcpEntry(v: unknown): v is McpEntry {
+  if (typeof v !== "object" || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  return (
+    typeof obj.name === "string" &&
+    (obj.type === "local" || obj.type === "remote") &&
+    typeof obj.enabled === "boolean" &&
+    typeof obj.localId === "string"
+  );
+}
+
+/**
+ * Valida el nombre de un MCP.
+ * - No puede estar vacío
+ * - Solo letras, números, guiones y guiones bajos (regex: /^[a-zA-Z0-9_-]+$/)
+ * - Máximo 64 caracteres
+ * - No puede duplicar un nombre existente (excepto el propio al editar)
+ * @returns string con el error, o null si es válido
+ */
+export function validateMcpName(
+  name: string,
+  existingNames: string[],
+  currentName?: string,
+): string | null {
+  if (!name || !name.trim()) return "Name is required";
+  if (name.length > 64) return "Name must be 64 characters or less";
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) return "Name can only contain letters, numbers, hyphens and underscores";
+  const duplicates = existingNames.filter((n) => n !== currentName);
+  if (duplicates.includes(name)) return `Name "${name}" is already in use`;
+  return null;
+}
+
+/** Lista negra de comandos peligrosos (primer token del command) */
+const DANGEROUS_COMMANDS = new Set([
+  "rm", "sudo", "eval", "chmod", "chown", "dd", "mkfs",
+  "format", "del", "rmdir",
+]);
+
+/**
+ * Valida el comando de un MCP local.
+ * - El array no puede estar vacío
+ * - El primer elemento (ejecutable) no puede estar vacío
+ * - Bloquea comandos peligrosos conocidos en el primer elemento
+ * - Advertencia si el comando contiene "| sh" o "| bash" en cualquier elemento
+ * @returns { error: string | null, warning: string | null }
+ */
+export function validateMcpCommand(
+  command: string[],
+): { error: string | null; warning: string | null } {
+  if (!command || command.length === 0) {
+    return { error: "Command is required (at least one element)", warning: null };
+  }
+  const first = (command[0] ?? "").trim().toLowerCase();
+  if (!first) {
+    return { error: "Executable (first command element) cannot be empty", warning: null };
+  }
+  if (DANGEROUS_COMMANDS.has(first)) {
+    return { error: `Command "${first}" is not allowed for security reasons`, warning: null };
+  }
+  // Detectar patrones de pipe peligrosos
+  const hasDangerousPipe = command.some(
+    (arg) => /\|\s*(sh|bash)/.test(arg),
+  );
+  return {
+    error: null,
+    warning: hasDangerousPipe
+      ? "Command contains a pipe to shell (| sh / | bash) — review carefully"
+      : null,
+  };
+}
+
+/**
+ * Valida la URL de un MCP remote.
+ * - No puede estar vacía
+ * - Debe ser una URL válida (parseable por new URL())
+ * - Protocolo debe ser "https:" o "http:"
+ * - Advertencia si es "http:" (no seguro)
+ * @returns { error: string | null, warning: string | null }
+ */
+export function validateMcpUrl(
+  url: string,
+): { error: string | null; warning: string | null } {
+  if (!url || !url.trim()) {
+    return { error: "URL is required", warning: null };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { error: "Invalid URL — must be a valid URL (e.g. https://mcp.example.com/sse)", warning: null };
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return { error: "URL must use https:// or http:// protocol", warning: null };
+  }
+  return {
+    error: null,
+    warning: parsed.protocol === "http:" ? "Using http:// is insecure — consider https://" : null,
+  };
+}
+
+/**
+ * Valida un objeto de pares clave-valor (environment o headers).
+ * - Todas las claves deben ser strings no vacíos
+ * - Todos los valores deben ser strings
+ * - Para headers: advertencia si algún valor contiene el patrón "{env:"
+ * @param pairs - El objeto a validar
+ * @param fieldName - "environment" o "headers" (para mensajes de error)
+ * @param warnOnEnvPattern - true para headers (false para environment)
+ * @returns { error: string | null, warning: string | null }
+ */
+export function validateMcpKeyValuePairs(
+  pairs: Record<string, string>,
+  fieldName: string,
+  warnOnEnvPattern: boolean,
+): { error: string | null; warning: string | null } {
+  for (const key of Object.keys(pairs)) {
+    if (!key || !key.trim()) {
+      return { error: `${fieldName}: all keys must be non-empty strings`, warning: null };
+    }
+  }
+  if (warnOnEnvPattern) {
+    const hasEnvPattern = Object.values(pairs).some((v) => v.includes("{env:"));
+    if (hasEnvPattern) {
+      return {
+        error: null,
+        warning: "⚠ OpenCode does not interpolate environment variables in headers. The value will be sent literally. (issue #23664)",
+      };
+    }
+  }
+  return { error: null, warning: null };
+}
+
+/**
+ * Validación completa de una entrada MCP.
+ * Ejecuta todas las validaciones específicas según el type.
+ */
+export function validateMcpEntry(
+  entry: Partial<McpEntry>,
+  allEntries: McpEntry[],
+  currentName?: string,
+): McpValidationResult {
+  const existingNames = allEntries.map((e) => e.name);
+
+  const nameError = validateMcpName(entry.name ?? "", existingNames, currentName);
+
+  let commandError: string | null = null;
+  let commandWarning: string | null = null;
+  let urlError: string | null = null;
+  let urlWarning: string | null = null;
+  let envError: string | null = null;
+  let headersError: string | null = null;
+  let headersWarning: string | null = null;
+
+  if (entry.type === "local") {
+    const local = entry as Partial<McpLocalEntry>;
+    const cmdResult = validateMcpCommand(local.command ?? []);
+    commandError = cmdResult.error;
+    commandWarning = cmdResult.warning;
+    if (local.environment && Object.keys(local.environment).length > 0) {
+      const envResult = validateMcpKeyValuePairs(local.environment, "environment", false);
+      envError = envResult.error;
+    }
+  } else if (entry.type === "remote") {
+    const remote = entry as Partial<McpRemoteEntry>;
+    const urlResult = validateMcpUrl(remote.url ?? "");
+    urlError = urlResult.error;
+    urlWarning = urlResult.warning;
+    if (remote.headers && Object.keys(remote.headers).length > 0) {
+      const hdrsResult = validateMcpKeyValuePairs(remote.headers, "headers", true);
+      headersError = hdrsResult.error;
+      headersWarning = hdrsResult.warning;
+    }
+  }
+
+  const isValid =
+    nameError === null &&
+    commandError === null &&
+    urlError === null &&
+    envError === null &&
+    headersError === null;
+
+  return {
+    nameError,
+    commandError,
+    commandWarning,
+    urlError,
+    urlWarning,
+    envError,
+    headersError,
+    headersWarning,
+    isValid,
+  };
+}
+
+/**
+ * Convierte el array de McpEntry al formato de objeto que espera OpenCode.
+ * Solo incluye MCPs con enabled === true.
+ * Omite campos undefined (timeout, environment, headers).
+ */
+function buildMcpOutput(mcps: McpEntry[]): Record<string, McpOpenCodeEntry> {
+  const result: Record<string, McpOpenCodeEntry> = {};
+  for (const mcp of mcps) {
+    if (!mcp.enabled) continue;
+    if (!mcp.name) continue;
+
+    const entry: McpOpenCodeEntry = {
+      type: mcp.type,
+      enabled: mcp.enabled,
+    };
+
+    if (mcp.type === "local") {
+      entry.command = mcp.command;
+      if (mcp.environment && Object.keys(mcp.environment).length > 0) {
+        entry.environment = mcp.environment;
+      }
+    } else {
+      entry.url = mcp.url;
+      if (mcp.headers && Object.keys(mcp.headers).length > 0) {
+        entry.headers = mcp.headers;
+      }
+    }
+
+    if (typeof mcp.timeout === "number") {
+      entry.timeout = mcp.timeout;
+    }
+
+    result[mcp.name] = entry;
+  }
+  return result;
+}
+
 // ── Plugin entry ───────────────────────────────────────────────────────────
 
 /** A single plugin file path entry */
@@ -103,6 +399,11 @@ export interface OpenCodeExportConfig {
   /** Whether to hide the default builder agent in the exported config */
   hideDefaultBuilder: boolean;
   /**
+   * MCPs configurados para este proyecto.
+   * Persistidos en project.properties.mcps — solo los enabled:true se exportan.
+   */
+  mcps: McpEntry[];
+  /**
    * When true AND fileExtension === "json", all exported files are placed inside
    * a `.opencode/` subdirectory of the chosen export directory.
    * Example: exportDir/.opencode/opencode.json, exportDir/.opencode/skills/, etc.
@@ -126,6 +427,7 @@ export function makeDefaultOpenCodeConfig(): OpenCodeExportConfig {
     hideDefaultPlanner: false,
     hideDefaultBuilder: false,
     createOpencodeDir: true,
+    mcps: [],
   };
 }
 
@@ -582,7 +884,7 @@ export interface OpenCodeV2Output {
   autoupdate: boolean;
   watcher: { ignore: string[] };
   plugin: string[];
-  mcp: Record<string, unknown>;
+  mcp: Record<string, McpOpenCodeEntry>;
   agent: Record<string, OpenCodeV2AgentEntry>;
 }
 
@@ -778,7 +1080,7 @@ export function buildOpenCodeV2Config(
     autoupdate:    config.autoUpdate,
     watcher:       { ignore: [...OPENCODE_V2_WATCHER_IGNORE] },
     plugin,
-    mcp:           {},
+    mcp:           buildMcpOutput(config.mcps ?? []),
     agent:         agentObj,
   };
 }

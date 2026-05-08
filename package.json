@@ -1,6 +1,6 @@
 {
 	"name": "agentsflow",
-	"version": "0.1.2",
+	"version": "0.1.22",
 	"description": "Visual Agent Flow editor for DrassMemorIA",
 	"type": "module",
 	"private": true,

@@ -8655,3 +8655,309 @@ button:disabled {
 .filelist.dnd--drop-valid {
 	outline-offset: -4px;
 }
+
+/* ── MCP Admin Tab ──────────────────────────────────────────────────────── */
+
+.export-modal__mcp-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 12px;
+  height: 100%;
+  min-height: 300px;
+}
+
+.export-modal__mcp-list-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-right: 1px solid var(--color-border);
+  padding-right: 12px;
+  overflow-y: auto;
+}
+
+.export-modal__mcp-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.export-modal__mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.export-modal__mcp-list-empty {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.export-modal__mcp-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  width: 100%;
+  transition: background var(--transition);
+}
+
+.export-modal__mcp-item:hover {
+  background: var(--color-surface-2);
+}
+
+.export-modal__mcp-item--active {
+  background: var(--color-surface-2);
+  border-color: var(--color-border);
+}
+
+.export-modal__mcp-item--disabled {
+  opacity: 0.5;
+}
+
+.export-modal__mcp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.export-modal__mcp-status-dot--enabled {
+  background: var(--color-success);
+}
+
+.export-modal__mcp-status-dot--disabled {
+  background: var(--color-text-muted);
+}
+
+.export-modal__mcp-type-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.export-modal__mcp-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-modal__mcp-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.export-modal__mcp-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  transition: color var(--transition);
+  line-height: 1;
+}
+
+.export-modal__mcp-icon-btn:hover {
+  color: var(--color-text);
+}
+
+.export-modal__mcp-icon-btn--danger:hover {
+  color: var(--color-error);
+}
+
+.export-modal__mcp-delete-confirm {
+  background: var(--color-error-bg, rgba(239, 68, 68, 0.08));
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--color-error);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.export-modal__mcp-delete-confirm-btn {
+  background: var(--color-error);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: opacity var(--transition);
+}
+
+.export-modal__mcp-delete-confirm-btn:hover {
+  opacity: 0.85;
+}
+
+/* ── MCP Form ─────────────────────────────────────────────────────────────── */
+
+.export-modal__mcp-form-area {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.export-modal__mcp-form-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.export-modal__mcp-form-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
+}
+
+.export-modal__mcp-type-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.export-modal__mcp-type-btn {
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all var(--transition);
+}
+
+.export-modal__mcp-type-btn--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.export-modal__mcp-kv-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-modal__mcp-kv-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.export-modal__mcp-kv-input {
+  flex: 1;
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.export-modal__mcp-kv-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.export-modal__mcp-add-kv-btn {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 8px;
+  text-align: left;
+  transition: all var(--transition);
+  align-self: flex-start;
+}
+
+.export-modal__mcp-add-kv-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.export-modal__mcp-array-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-modal__mcp-array-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.export-modal__mcp-field-error {
+  color: var(--color-error);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.export-modal__mcp-field-warning {
+  color: var(--color-warning);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.export-modal__mcp-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.export-modal__mcp-save-btn {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background var(--transition);
+}
+
+.export-modal__mcp-save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.export-modal__mcp-save-btn:not(:disabled):hover {
+  background: var(--color-primary-hover, var(--color-primary));
+  filter: brightness(1.1);
+}
+
+.export-modal__text-input--error {
+  border-color: var(--color-error) !important;
+}
